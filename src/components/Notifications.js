@@ -11,7 +11,7 @@ const Notifications = ({
   const handleAcceptInvite = (notification) => {
     console.log("Accept invite clicked for:", notification);
     const challengeTitleMatch = notification.match(
-      /hat dich zu "([^"]+)" eingeladen!/,
+      /hat dich zu "([^"]+)" eingeladen!/
     );
     if (!challengeTitleMatch) {
       setMessage("Ungültiges Benachrichtigungsformat");
@@ -78,7 +78,7 @@ const Notifications = ({
   const handleRejectInvite = (notification) => {
     console.log("Reject invite clicked for:", notification);
     const challengeTitleMatch = notification.match(
-      /hat dich zu "([^"]+)" eingeladen!/,
+      /hat dich zu "([^"]+)" eingeladen!/
     );
     if (!challengeTitleMatch) {
       setMessage("Ungültiges Benachrichtigungsformat");
@@ -147,7 +147,7 @@ const Notifications = ({
       className="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
     >
       <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl transform transition-all scale-95 animate-bounce">
-        <h3 className="text-lg font-semibold mb-4 text-purple-800">
+        <h3 className="text-lg font-semibold mb-4 text-blue-800">
           Benachrichtigungen 🔔
         </h3>
         {notifications.length === 0 ? (
@@ -156,7 +156,7 @@ const Notifications = ({
           notifications.map((notification, index) => (
             <div
               key={index}
-              className="mb-2 flex justify-between items-center p-2 bg-purple-50 rounded-lg"
+              className="mb-2 flex justify-between items-center p-2 bg-blue-50 rounded-lg"
             >
               <span className="text-gray-700 text-sm">{notification}</span>
               {notification.includes("hat dich zu") && (

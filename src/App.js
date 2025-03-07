@@ -22,9 +22,12 @@ const App = () => {
 
   const fetchChallenges = () => {
     setIsLoading(true);
-    fetch("/challenges")
+    fetch(`/challenges?username=${encodeURIComponent(username)}`)
       .then((res) => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        if (!res.ok) {
+          console.error("Fetch challenges failed with status:", res.status);
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
         return res.json();
       })
       .then((data) => {
@@ -33,54 +36,79 @@ const App = () => {
       })
       .catch((err) => {
         console.error("Error fetching challenges:", err.message);
-        setMessage("Error fetching challenges. Check server logs.");
+        setMessage(
+          "Error fetching challenges. Check server logs: " + err.message
+        );
       })
       .finally(() => setIsLoading(false));
   };
 
   const fetchFriends = () => {
     if (!username) return;
-    fetch(`/friends/${username}`)
+    fetch(`/friends?username=${encodeURIComponent(username)}`)
       .then((res) => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        if (!res.ok) {
+          console.error("Fetch friends failed with status:", res.status);
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
         return res.json();
       })
       .then((data) => {
         console.log("Friends data:", data);
         setFriends(data.friends || []);
-        setFriendRequests(data.friendRequests || []);
+        // Temporär deaktiviert, bis friendRequests im Backend implementiert sind
+        setFriendRequests([]);
       })
-      .catch((err) => console.error("Error fetching friends:", err.message));
+      .catch((err) => {
+        console.error("Error fetching friends:", err.message);
+        setMessage("Error fetching friends. Check server logs: " + err.message);
+      });
   };
 
   const fetchNotifications = () => {
     if (!username) return;
-    fetch(`/friends/${username}`)
+    fetch(`/notifications?username=${encodeURIComponent(username)}`)
       .then((res) => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        if (!res.ok) {
+          console.error("Fetch notifications failed with status:", res.status);
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
         return res.json();
       })
       .then((data) => {
         console.log("Notifications data:", data);
-        setNotifications(data.notifications || []);
+        setNotifications(data || []);
       })
       .catch((err) => {
         console.error("Error fetching notifications:", err.message);
-        setMessage("Error fetching notifications. Check server logs.");
+        setMessage(
+          "Error fetching notifications. Check server logs: " + err.message
+        );
       });
   };
 
   useEffect(() => {
-    if (isLoggedIn) {
-      fetchChallenges();
-      fetchFriends();
-      fetchNotifications();
+    if (isLoggedIn && username) {
+      const loadData = async () => {
+        setIsLoading(true);
+        try {
+          await Promise.all([
+            fetchChallenges(),
+            fetchFriends(),
+            fetchNotifications(),
+          ]);
+        } catch (err) {
+          setMessage(`Fehler beim Laden der Daten: ${err.message}`);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      loadData();
 
+      // Optional: Intervall nur für Benachrichtigungen
       const interval = setInterval(() => {
-        fetchChallenges();
         fetchNotifications();
-      }, 10000); // 10 Sekunden Intervall
-
+      }, 30000); // Alle 30 Sekunden (anpassbar)
       return () => clearInterval(interval);
     }
   }, [isLoggedIn, username]);
@@ -92,9 +120,8 @@ const App = () => {
       body: JSON.stringify({
         title: newChallengeTitle,
         duration: parseInt(newChallengeDuration),
-        startDate: newChallengeStartDate
-          ? newChallengeStartDate
-          : new Date().toISOString().split("T")[0],
+        startDate:
+          newChallengeStartDate || new Date().toISOString().split("T")[0],
         participants: [username],
         isPublic: newChallengeIsPublic,
       }),
@@ -106,8 +133,12 @@ const App = () => {
         setNewChallengeDuration("");
         setNewChallengeStartDate("");
         setNewChallengeIsPublic(false);
+        setMessage("Challenge erfolgreich erstellt!");
       })
-      .catch((err) => console.error("Error creating challenge:", err));
+      .catch((err) => {
+        console.error("Error creating challenge:", err.message);
+        setMessage("Error creating challenge: " + err.message);
+      });
   };
 
   const completeToday = (challengeId) => {
@@ -118,6 +149,7 @@ const App = () => {
     })
       .then((res) => {
         console.log("Confirm response status:", res.status);
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         return res.json();
       })
       .then((data) => {
@@ -154,9 +186,10 @@ const App = () => {
         setNewFriendUsername("");
         fetchFriends();
       })
-      .catch((err) =>
-        setMessage("Error sending friend request: " + err.message),
-      );
+      .catch((err) => {
+        console.error("Error sending friend request:", err.message);
+        setMessage("Error sending friend request: " + err.message);
+      });
   };
 
   const acceptFriendRequest = (friend) => {
@@ -170,15 +203,16 @@ const App = () => {
         setMessage(data.message || data.error);
         fetchFriends();
       })
-      .catch((err) =>
-        setMessage("Error accepting friend request: " + err.message),
-      );
+      .catch((err) => {
+        console.error("Error accepting friend request:", err.message);
+        setMessage("Error accepting friend request: " + err.message);
+      });
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-100 via-purple-100 to-blue-100 flex flex-col items-center p-4">
-      <h1 className="text-4xl font-bold text-purple-600 mb-6 tracking-wide animate-bounce">
-        Challyme
+    <div className="min-h-screen bg-blue-50 flex flex-col items-center p-4">
+      <h1 className="text-4xl font-bold text-blue-600 mb-6 tracking-wide animate-bounce">
+        Challyme 🏆
       </h1>
 
       {!isLoggedIn ? (
@@ -193,9 +227,12 @@ const App = () => {
         />
       ) : (
         <div className="w-full max-w-md">
+          {message && (
+            <p className="text-center text-red-500 mb-4">{message}</p>
+          )}
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-semibold text-purple-800">
-              Hallo, {username}! 🎉
+            <h2 className="text-xl font-semibold text-blue-800">
+              Hallo, {username}! 💪
             </h2>
             <div className="relative">
               <button
@@ -204,7 +241,7 @@ const App = () => {
                     .getElementById("notifications-modal")
                     .classList.toggle("hidden")
                 }
-                className="bg-purple-500 text-white px-4 py-2 rounded-full shadow-lg hover:bg-purple-600 transition-all transform hover:scale-105 flex items-center"
+                className="bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg hover:bg-blue-600 transition-all transform hover:scale-105 flex items-center"
               >
                 <span className="mr-2">🔔</span> Benachrichtigungen
                 {notifications.length > 0 && (
@@ -226,8 +263,8 @@ const App = () => {
           />
 
           <div className="mb-6">
-            <h3 className="text-lg font-semibold text-purple-700 mb-2">
-              Freund hinzufügen 🌟
+            <h3 className="text-lg font-semibold text-blue-700 mb-2">
+              Freund hinzufügen 🤝
             </h3>
             <div className="flex items-center gap-2">
               <input
@@ -235,18 +272,18 @@ const App = () => {
                 placeholder="Freundes-Benutzername"
                 value={newFriendUsername}
                 onChange={(e) => setNewFriendUsername(e.target.value)}
-                className="w-full p-3 border border-purple-300 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-400 shadow-sm transition-all"
+                className="w-full p-3 border border-blue-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-400 shadow-sm transition-all"
               />
               <button
                 onClick={sendFriendRequest}
-                className="bg-purple-500 text-white px-4 py-2 rounded-full shadow-lg hover:bg-purple-600 transition-all transform hover:scale-105"
+                className="bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg hover:bg-blue-600 transition-all transform hover:scale-105"
               >
                 Anfrage senden
               </button>
             </div>
             {friendRequests.length > 0 && (
               <div className="mt-4">
-                <h4 className="text-md font-semibold text-purple-600">
+                <h4 className="text-md font-semibold text-blue-600">
                   Freundschaftsanfragen
                 </h4>
                 {friendRequests.map((friend) => (
@@ -278,9 +315,9 @@ const App = () => {
                   .getElementById("new-challenge-modal")
                   .classList.toggle("hidden");
               }}
-              className="bg-purple-500 text-white px-4 py-2 rounded-full shadow-lg hover:bg-purple-600 transition-all transform hover:scale-105 flex items-center"
+              className="bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg hover:bg-blue-600 transition-all transform hover:scale-105 flex items-center"
             >
-              <span className="mr-2">✨</span> Neue Challenge
+              <span className="mr-2">🏆</span> Neue Challenge
             </button>
           </div>
 
@@ -297,8 +334,13 @@ const App = () => {
           />
 
           {isLoading && (
-            <p className="text-center text-purple-500 animate-pulse">
+            <p className="text-center text-blue-500 animate-pulse">
               Laden... ⏳
+            </p>
+          )}
+          {challenges.length === 0 && !isLoading && (
+            <p className="text-center text-gray-500">
+              Keine Challenges gefunden. Erstelle eine neue!
             </p>
           )}
           <div className="space-y-4">
@@ -316,9 +358,6 @@ const App = () => {
                 />
               ))}
           </div>
-          {message && (
-            <p className="text-center text-red-500 mt-4">{message}</p>
-          )}
         </div>
       )}
     </div>

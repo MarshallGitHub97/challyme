@@ -3,12 +3,14 @@
 @tailwind utilities;
 
 body {
-  font-family: 'Poppins', sans-serif;
+  font-family: "Poppins", sans-serif;
+  background-color: #f0f8ff; /* Alice Blue */
 }
 
-/* Bounce-Animation für verspieltes Gefühl */
+/* Bounce-Animation für motivierendes Gefühl */
 @keyframes bounce {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0);
   }
   50% {
