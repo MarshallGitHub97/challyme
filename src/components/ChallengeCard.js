@@ -115,13 +115,21 @@ const ChallengeCard = ({
     : [];
   const userHasConfirmedToday = confirmedDates.includes(today);
 
+  // Schließen-Logik für Klick außerhalb des Modals
+  const handleCloseModal = (e) => {
+    if (e.target.classList.contains("modal-overlay")) {
+      setShowDetailsModal(false);
+      setShowInviteModal(false);
+    }
+  };
+
   return (
-    <div
-      className="bg-white shadow-lg rounded-2xl p-4 hover:shadow-xl transition-all transform hover:scale-105 cursor-pointer"
-      onClick={() => setShowDetailsModal(true)}
-    >
+    <div className="bg-white shadow-lg rounded-2xl p-4 relative transition-all hover:shadow-xl">
       <div className="flex justify-between items-center mb-2">
-        <h3 className="text-lg font-semibold text-blue-800">
+        <h3
+          className="text-lg font-semibold text-blue-800 cursor-pointer"
+          onClick={() => setShowDetailsModal(true)}
+        >
           {challenge.title} 🏆
         </h3>
         <div className="flex gap-2">
@@ -151,8 +159,14 @@ const ChallengeCard = ({
       </div>
 
       {showInviteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 transition-opacity duration-300">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl transform transition-transform duration-300 ease-out">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 modal-overlay"
+          onClick={handleCloseModal}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-lg font-semibold mb-4 text-blue-800">
               Lade einen Freund ein! 🤝
             </h3>
@@ -164,7 +178,7 @@ const ChallengeCard = ({
                     e.stopPropagation();
                     sendInvite(friend);
                   }}
-                  className="w-full p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-all transform hover:scale-105"
+                  className="w-full p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-all"
                 >
                   {friend} einladen
                 </button>
@@ -184,8 +198,14 @@ const ChallengeCard = ({
       )}
 
       {showDetailsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-60 transition-opacity duration-300">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl transform transition-transform duration-300 ease-out">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-1000 modal-overlay"
+          onClick={handleCloseModal}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-lg font-semibold mb-4 text-blue-800">
               {challenge.title} - Fortschritt 🏆
             </h3>
@@ -275,7 +295,7 @@ const ChallengeCard = ({
               e.stopPropagation();
               completeToday(challenge._id);
             }}
-            className={`px-4 py-2 rounded-full shadow-lg transition-all transform hover:scale-105 ${
+            className={`px-4 py-2 rounded-full shadow-lg transition-all z-0 ${
               challenge.completed
                 ? "bg-gray-400 cursor-not-allowed"
                 : "bg-blue-500 text-white hover:bg-blue-600"

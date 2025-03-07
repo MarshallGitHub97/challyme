@@ -146,7 +146,7 @@ const Notifications = ({
       id="notifications-modal"
       className="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
     >
-      <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl transform transition-all scale-95 animate-bounce">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl transform transition-all scale-95">
         <h3 className="text-lg font-semibold mb-4 text-blue-800">
           Benachrichtigungen 🔔
         </h3>

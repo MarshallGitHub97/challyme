@@ -114,7 +114,7 @@ const App = () => {
   }, [isLoggedIn, username]);
 
   const createChallenge = () => {
-    fetch("/challenges", {
+    fetch("/create-challenge", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -122,18 +122,21 @@ const App = () => {
         duration: parseInt(newChallengeDuration),
         startDate:
           newChallengeStartDate || new Date().toISOString().split("T")[0],
-        participants: [username],
-        isPublic: newChallengeIsPublic,
+        username,
       }),
     })
       .then((res) => res.json())
       .then((data) => {
-        setChallenges([...challenges, data]);
-        setNewChallengeTitle("");
-        setNewChallengeDuration("");
-        setNewChallengeStartDate("");
-        setNewChallengeIsPublic(false);
-        setMessage("Challenge erfolgreich erstellt!");
+        if (data.error) {
+          setMessage(data.error);
+        } else {
+          setChallenges([...challenges, data.challenge]);
+          setNewChallengeTitle("");
+          setNewChallengeDuration("");
+          setNewChallengeStartDate("");
+          setNewChallengeIsPublic(false);
+          setMessage("Challenge erfolgreich erstellt!");
+        }
       })
       .catch((err) => {
         console.error("Error creating challenge:", err.message);
@@ -180,7 +183,14 @@ const App = () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fromUser: username, toUser: newFriendUsername }),
     })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          return res.text().then((text) => {
+            throw new Error(`HTTP error! status: ${res.status} - ${text}`);
+          });
+        }
+        return res.json();
+      })
       .then((data) => {
         setMessage(data.message || data.error);
         setNewFriendUsername("");
@@ -211,7 +221,7 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-blue-50 flex flex-col items-center p-4">
-      <h1 className="text-4xl font-bold text-blue-600 mb-6 tracking-wide animate-bounce">
+      <h1 className="text-4xl font-bold text-blue-600 mb-6 tracking-wide">
         Challyme 🏆
       </h1>
 

@@ -15,7 +15,14 @@ const LoginForm = ({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          return res.text().then((text) => {
+            throw new Error(`HTTP error! status: ${res.status} - ${text}`);
+          });
+        }
+        return res.json();
+      })
       .then((data) => setMessage(data.message || data.error))
       .catch((err) => setMessage("Netzwerkfehler: " + err.message));
   };
@@ -26,7 +33,14 @@ const LoginForm = ({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          return res.text().then((text) => {
+            throw new Error(`HTTP error! status: ${res.status} - ${text}`);
+          });
+        }
+        return res.json();
+      })
       .then((data) => {
         if (data.error) {
           setMessage(data.error);
@@ -39,7 +53,7 @@ const LoginForm = ({
   };
 
   return (
-    <div className="w-full max-w-sm bg-white shadow-2xl rounded-3xl p-6 transform transition-all hover:scale-105">
+    <div className="w-full max-w-sm bg-white shadow-2xl rounded-3xl p-6 transform transition-all">
       <h2 className="text-2xl font-semibold text-blue-800 mb-4 text-center">
         Login / Registrieren 💪
       </h2>
