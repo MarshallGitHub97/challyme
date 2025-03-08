@@ -581,6 +581,69 @@ app.get("/challenge-images", async (req, res) => {
   }
 });
 
+app.post("/notify-missed-day", async (req, res) => {
+  const { username, challengeId } = req.body;
+  try {
+    const challenge = await Challenge.findById(challengeId);
+    if (!challenge)
+      return res.status(404).json({ error: "Challenge nicht gefunden" });
+
+    const userStreak = challenge.streaks.find((s) => s.user === username) || {
+      days: 0,
+      lastConfirmed: [],
+    };
+    const today = new Date().toISOString().split("T")[0];
+    const confirmedDates = Array.isArray(userStreak.lastConfirmed)
+      ? userStreak.lastConfirmed.map(
+          (date) => new Date(date).toISOString().split("T")[0]
+        )
+      : userStreak.lastConfirmed
+      ? [new Date(userStreak.lastConfirmed).toISOString().split("T")[0]]
+      : [];
+    const hasConfirmedToday = confirmedDates.includes(today);
+
+    if (!hasConfirmedToday && !challenge.completed) {
+      const startDate = new Date(challenge.startDate);
+      const currentDay =
+        Math.floor((new Date() - startDate) / (1000 * 60 * 60 * 24)) + 1;
+      if (currentDay <= challenge.duration) {
+        const notification = {
+          id: new mongoose.Types.ObjectId(),
+          type: "missed_day",
+          message: `Du hast Tag ${currentDay} in "${challenge.title}" verpasst!`,
+          challengeId,
+        };
+        const existingInvite = await Invite.findOne({
+          invitedUser: username,
+          challengeId,
+          status: "pending",
+        });
+        if (!existingInvite) {
+          const invite = new Invite({
+            invitedUser: username, // Der Benutzer, der benachrichtigt wird
+            challengeId,
+            status: "pending",
+            token:
+              Date.now().toString() + Math.random().toString(36).substr(2, 9),
+            invitedBy: username, // Füge den aktuellen Benutzer als invitedBy hinzu
+          });
+          await invite.save();
+        }
+        res.json({ notification });
+      } else {
+        res.json({ message: "Kein verpasster Tag" });
+      }
+    } else {
+      res.json({ message: "Kein verpasster Tag" });
+    }
+  } catch (err) {
+    console.error("Fehler beim Überprüfen des verpassten Tages:", err);
+    res
+      .status(500)
+      .json({ error: "Serverfehler beim Überprüfen des verpassten Tages" });
+  }
+});
+
 // Statische Dateien und Fallback
 app.use(express.static(path.join(__dirname, "../build")));
 app.use("/uploads", express.static("uploads")); // Statischer Zugriff auf Uploads

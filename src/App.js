@@ -93,6 +93,55 @@ const App = () => {
       });
   };
 
+  // Berechne den höchsten Streak für die Punkte-Karte
+  const getHighestStreak = () => {
+    let highestStreak = 0;
+    let hasMissedDay = false;
+
+    challenges.forEach((challenge) => {
+      const userStreak = challenge.streaks.find((s) => s.user === username) || {
+        days: 0,
+        lastConfirmed: [],
+      };
+      const today = new Date().toISOString().split("T")[0];
+      const confirmedDates = Array.isArray(userStreak.lastConfirmed)
+        ? userStreak.lastConfirmed.map(
+            (date) => new Date(date).toISOString().split("T")[0]
+          )
+        : userStreak.lastConfirmed
+        ? [new Date(userStreak.lastConfirmed).toISOString().split("T")[0]]
+        : [];
+      const hasConfirmedToday = confirmedDates.includes(today);
+
+      if (userStreak.days > highestStreak) {
+        highestStreak = userStreak.days;
+      }
+
+      const startDate = new Date(challenge.startDate);
+      const currentDay =
+        Math.floor((new Date() - startDate) / (1000 * 60 * 60 * 24)) + 1;
+      if (
+        currentDay <= challenge.duration &&
+        !hasConfirmedToday &&
+        !challenge.completed
+      ) {
+        hasMissedDay = true;
+      }
+    });
+
+    return { highestStreak, hasMissedDay };
+  };
+
+  const { highestStreak, hasMissedDay } = getHighestStreak();
+
+  // Bestimme das Symbol basierend auf dem Streak
+  const getStreakSymbol = () => {
+    if (hasMissedDay) return "😢"; // Traurig, wenn ein Tag verpasst wurde
+    if (highestStreak > 5) return "🚀"; // Rakete für sehr gute Streaks
+    if (highestStreak > 0) return "😊"; // Happy Smiley für normale Streaks
+    return "😢"; // Traurig, wenn kein Streak
+  };
+
   useEffect(() => {
     if (isLoggedIn && username) {
       const loadData = async () => {
@@ -103,6 +152,50 @@ const App = () => {
             fetchFriends(),
             fetchNotifications(),
           ]);
+          // Check für verpasste Tage nur einmal beim Laden
+          challenges.forEach((challenge) => {
+            const userStreak = challenge.streaks.find(
+              (s) => s.user === username
+            ) || {
+              days: 0,
+              lastConfirmed: [],
+            };
+            const today = new Date().toISOString().split("T")[0];
+            const confirmedDates = Array.isArray(userStreak.lastConfirmed)
+              ? userStreak.lastConfirmed.map(
+                  (date) => new Date(date).toISOString().split("T")[0]
+                )
+              : userStreak.lastConfirmed
+              ? [new Date(userStreak.lastConfirmed).toISOString().split("T")[0]]
+              : [];
+            const hasConfirmedToday = confirmedDates.includes(today);
+
+            if (!hasConfirmedToday && !challenge.completed) {
+              const startDate = new Date(challenge.startDate);
+              const currentDay =
+                Math.floor((new Date() - startDate) / (1000 * 60 * 60 * 24)) +
+                1;
+              if (currentDay <= challenge.duration) {
+                fetch("/notify-missed-day", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    username,
+                    challengeId: challenge._id,
+                  }),
+                })
+                  .then((res) => res.json())
+                  .then((data) => {
+                    if (data.notification) {
+                      setNotifications((prev) => [...prev, data.notification]);
+                    }
+                  })
+                  .catch((err) =>
+                    console.error("Error notifying missed day:", err)
+                  );
+              }
+            }
+          });
         } catch (err) {
           setMessage(`Fehler beim Laden der Daten: ${err.message}`);
         } finally {
@@ -110,11 +203,6 @@ const App = () => {
         }
       };
       loadData();
-
-      const interval = setInterval(() => {
-        fetchNotifications();
-      }, 30000);
-      return () => clearInterval(interval);
     }
   }, [isLoggedIn, username]);
 
@@ -141,6 +229,8 @@ const App = () => {
           setNewChallengeStartDate("");
           setNewChallengeIsPublic(false);
           setMessage("Challenge erfolgreich erstellt!");
+          // Aktualisiere Notifications nach Erstellung
+          fetchNotifications();
         }
       })
       .catch((err) => {
@@ -181,6 +271,8 @@ const App = () => {
             data.message + ` (+${data.points - points} Punkte)` ||
               "Challenge updated!"
           );
+          // Aktualisiere Notifications nach Bestätigung
+          fetchNotifications();
         }
       })
       .catch((err) => setMessage("Error completing challenge: " + err.message));
@@ -204,6 +296,7 @@ const App = () => {
         setMessage(data.message || "Unbekannter Fehler");
         setNewFriendUsername("");
         fetchFriends();
+        fetchNotifications(); // Aktualisiere nach Freundschaftsanfrage
       })
       .catch((err) => {
         console.error("Error sending friend request:", err.message);
@@ -221,6 +314,7 @@ const App = () => {
       .then((data) => {
         setMessage(data.message || data.error);
         fetchFriends();
+        fetchNotifications(); // Aktualisiere nach Annahme
       })
       .catch((err) => {
         console.error("Error accepting friend request:", err.message);
@@ -242,6 +336,18 @@ const App = () => {
     setMessage("Erfolgreich abgemeldet!");
   };
 
+  const refreshData = () => {
+    setIsLoading(true);
+    Promise.all([fetchChallenges(), fetchFriends(), fetchNotifications()])
+      .then(() => {
+        setMessage("Daten aktualisiert!");
+      })
+      .catch((err) => {
+        setMessage(`Fehler beim Aktualisieren: ${err.message}`);
+      })
+      .finally(() => setIsLoading(false));
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-100 to-yellow-50 flex flex-col items-center p-4">
       <h1 className="text-5xl font-bold text-green-600 mb-8 tracking-wide animate-bounce-once">
@@ -260,39 +366,58 @@ const App = () => {
         />
       ) : (
         <div className="w-full max-w-md">
+          <h2 className="text-2xl font-semibold text-green-700 text-center mb-6">
+            Hallo, {username}!<br />
+            💪 Du rockst das!
+          </h2>
+
+          {/* Punkte-Karte */}
+          <div className="bg-white rounded-3xl p-6 shadow-lg hover:shadow-2xl hover:bg-green-50 transition-all duration-300 mb-6">
+            <h3 className="text-xl font-semibold text-green-700 mb-4">
+              Deine Punkte 🏆
+            </h3>
+            <p className="text-3xl font-bold text-yellow-500 text-center">
+              {points} Punkte
+            </p>
+            <p className="text-lg text-gray-700 text-center mt-2">
+              Höchster Streak: {highestStreak} Tage {getStreakSymbol()}
+            </p>
+          </div>
+
           {message && (
             <p className="text-center text-red-500 mb-4 bg-white p-2 rounded-xl shadow-md">
               {message}
             </p>
           )}
-          <div className="flex flex-col items-center mb-6">
-            <div className="flex gap-4 mb-4">
-              <button
-                onClick={() =>
-                  document
-                    .getElementById("notifications-modal")
-                    .classList.toggle("hidden")
-                }
-                className="relative bg-blue-500 text-white px-4 py-4 rounded-full shadow-lg hover:bg-blue-600 transition-all duration-300 transform hover:scale-110 animate-pulse"
-              >
-                🔔
-                {notifications.length > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center animate-bounce">
-                    {notifications.length}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={handleLogout}
-                className="bg-red-500 text-white px-4 py-4 rounded-full shadow-lg hover:bg-red-600 transition-all duration-300 transform hover:scale-110"
-              >
-                🚪
-              </button>
-            </div>
-            <h2 className="text-2xl font-semibold text-green-700 text-center">
-              Hallo, {username}!<br />
-              💪 Du rockst das! Punkte: {points}
-            </h2>
+          <div className="flex justify-end mb-6 space-x-2">
+            <button
+              onClick={() =>
+                document
+                  .getElementById("notifications-modal")
+                  .classList.toggle("hidden")
+              }
+              className="relative bg-gray-200 text-gray-700 px-3 py-2 rounded-full hover:bg-gray-300 transition-all duration-200"
+            >
+              🔔
+              {notifications.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                  {notifications.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={handleLogout}
+              className="bg-gray-200 text-gray-700 px-3 py-2 rounded-full hover:bg-gray-300 transition-all duration-200"
+            >
+              🚪
+            </button>
+            <button
+              onClick={refreshData}
+              className="bg-gray-200 text-gray-700 px-3 py-2 rounded-full hover:bg-gray-300 transition-all duration-200"
+              disabled={isLoading}
+            >
+              {isLoading ? "🔄" : "Aktualisieren"}
+            </button>
           </div>
 
           <Notifications

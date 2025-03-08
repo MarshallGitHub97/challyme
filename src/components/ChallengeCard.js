@@ -118,7 +118,7 @@ const ChallengeCard = ({
     formData.append("image", file);
     formData.append("challengeId", challenge._id);
     formData.append("username", username);
-    formData.append("day", selectedDay || 1); // Standard-Tag 1, wenn kein Tag ausgewählt
+    formData.append("day", selectedDay || 1);
 
     fetch("/upload-challenge-image", {
       method: "POST",
@@ -128,7 +128,7 @@ const ChallengeCard = ({
       .then((data) => {
         setMessage(data.message || data.error);
         setShowUploadModal(false);
-        setSelectedDay(null); // Tag zurücksetzen
+        setSelectedDay(null);
       })
       .catch((err) =>
         setMessage("Fehler beim Hochladen des Bildes: " + err.message)
@@ -260,57 +260,53 @@ const ChallengeCard = ({
 
   return (
     <div className="bg-white shadow-lg rounded-3xl p-6 relative transition-all hover:shadow-2xl hover:bg-green-50">
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-col items-start mb-4">
         <h3
           className="text-xl font-bold text-green-800 cursor-pointer hover:text-yellow-500 transition-all duration-300"
           onClick={() => setShowDetailsModal(true)}
         >
           {challenge.title} 🏆
         </h3>
-        <div className="flex gap-2">
-          {challenge.participants.includes(username) && (
-            <>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowInviteModal(true);
-                }}
-                className="text-yellow-600 hover:text-green-700 transition-all duration-300"
-              >
-                🤝
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowChatModal(true);
-                }}
-                className="text-yellow-600 hover:text-green-700 transition-all duration-300"
-              >
-                💬
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowUploadModal(true);
-                }}
-                className="text-yellow-600 hover:text-green-700 transition-all duration-300"
-              >
-                📸
-              </button>
-            </>
-          )}
-          {challenge.participants.includes(username) && (
+        {challenge.participants.includes(username) && (
+          <div className="flex justify-start gap-6 mt-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowInviteModal(true);
+              }}
+              className="text-3xl text-yellow-600 hover:text-green-700 transition-all duration-300"
+            >
+              🤝
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowChatModal(true);
+              }}
+              className="text-3xl text-yellow-600 hover:text-green-700 transition-all duration-300"
+            >
+              💬
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowUploadModal(true);
+              }}
+              className="text-3xl text-yellow-600 hover:text-green-700 transition-all duration-300"
+            >
+              📸
+            </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 deleteChallenge();
               }}
-              className="text-red-500 hover:text-red-700 transition-all duration-300"
+              className="text-3xl text-red-500 hover:text-red-700 transition-all duration-300"
             >
               🗑️
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {showInviteModal && (
@@ -567,9 +563,9 @@ const ChallengeCard = ({
                       e.stopPropagation();
                       pokeFriend(participant);
                     }}
-                    className="text-green-500 hover:text-yellow-600 text-base transition-all duration-300"
+                    className="text-green-500 hover:text-yellow-600 text-2xl transition-all duration-300"
                   >
-                    Anstupsen 👈
+                    👈
                   </button>
                 )}
               </div>
@@ -597,7 +593,7 @@ const ChallengeCard = ({
             }`}
             disabled={challenge.completed}
           >
-            Heute abschließen ✅
+            {challenge.completed ? "🎉 Erledigt!" : "🎯"}
           </button>
         )}
       </div>
