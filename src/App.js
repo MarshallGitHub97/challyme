@@ -28,7 +28,6 @@ const App = () => {
   const [activeTab, setActiveTab] = useState("challenges");
   const [isNotificationsVisible, setIsNotificationsVisible] = useState(false);
 
-  // Initiales Laden der Daten nur bei Login
   useEffect(() => {
     if (isLoggedIn && username) {
       const loadData = async () => {
@@ -47,17 +46,16 @@ const App = () => {
       };
       loadData();
     }
-  }, [isLoggedIn, username]); // Nur bei Login/Username-Änderung ausführen
+  }, [isLoggedIn, username]);
 
   const fetchChallenges = async () => {
     setIsLoading(true);
     try {
       const res = await fetch(
-        `/challenges?username=${encodeURIComponent(username)}`
+        `/api/challenges?username=${encodeURIComponent(username)}`
       );
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
-      console.log("Challenges data:", data);
       setChallenges(data || []);
     } catch (err) {
       console.error("Error fetching challenges:", err.message);
@@ -73,11 +71,10 @@ const App = () => {
     if (!username) return;
     try {
       const res = await fetch(
-        `/friends?username=${encodeURIComponent(username)}`
+        `/api/friends?username=${encodeURIComponent(username)}`
       );
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
-      console.log("Friends data:", data);
       setFriends(data.friends || []);
       setFriendRequests(data.friendRequests || []);
     } catch (err) {
@@ -90,11 +87,10 @@ const App = () => {
     if (!username) return;
     try {
       const res = await fetch(
-        `/notifications?username=${encodeURIComponent(username)}`
+        `/api/notifications?username=${encodeURIComponent(username)}`
       );
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
-      console.log("Notifications data:", data);
       setNotifications(data || []);
     } catch (err) {
       console.error("Error fetching notifications:", err.message);
@@ -150,7 +146,7 @@ const App = () => {
   };
 
   const createChallenge = () => {
-    fetch("/create-challenge", {
+    fetch("/api/create-challenge", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -182,7 +178,7 @@ const App = () => {
   };
 
   const completeToday = (challengeId) => {
-    fetch("/confirm", {
+    fetch("/api/confirm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, challengeId }),
@@ -218,7 +214,7 @@ const App = () => {
   };
 
   const sendFriendRequest = () => {
-    fetch("/send-friend-request", {
+    fetch("/api/send-friend-request", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fromUser: username, toUser: newFriendUsername }),
@@ -244,7 +240,7 @@ const App = () => {
   };
 
   const acceptFriendRequest = (friend) => {
-    fetch("/accept-friend-request", {
+    fetch("/api/accept-friend-request", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, friend }),
