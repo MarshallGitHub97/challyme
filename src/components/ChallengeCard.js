@@ -85,6 +85,7 @@ const ChallengeCard = ({
       : userStreak.lastConfirmed
       ? [new Date(userStreak.lastConfirmed).toISOString().split("T")[0]]
       : [];
+    const confirmedDays = userStreak.days; // Anzahl der bestätigten Tage
 
     const progress = [];
     for (let i = 0; i < duration; i++) {
@@ -93,9 +94,16 @@ const ChallengeCard = ({
       currentDate.setDate(startDate.getDate() + i);
       const dateStr = currentDate.toISOString().split("T")[0];
       const isConfirmed = confirmedDates.includes(dateStr);
+      let status = isConfirmed ? "🔥" : "❌";
+
+      // Prüfe, ob nach 10 Tagen ein Tag nicht abgeschlossen wurde
+      if (!isConfirmed && confirmedDays >= 10 && progress.length === 10) {
+        status = "❄️"; // Erstes nicht abgeschlossenes Tag nach 10 Tagen
+      }
+
       progress.push({
         day: currentDay,
-        status: isConfirmed ? "🔥" : "❌",
+        status: status,
       });
     }
     return progress;
@@ -114,6 +122,11 @@ const ChallengeCard = ({
     ? [new Date(userStreak.lastConfirmed).toISOString().split("T")[0]]
     : [];
   const userHasConfirmedToday = confirmedDates.includes(today);
+  const canPoke =
+    userHasConfirmedToday &&
+    !hasConfirmedToday &&
+    participant !== username &&
+    friends.includes(participant);
 
   // Schließen-Logik für Klick außerhalb des Modals
   const handleCloseModal = (e) => {
@@ -124,10 +137,10 @@ const ChallengeCard = ({
   };
 
   return (
-    <div className="bg-white shadow-lg rounded-2xl p-4 relative transition-all hover:shadow-xl">
-      <div className="flex justify-between items-center mb-2">
+    <div className="bg-white shadow-lg rounded-3xl p-6 relative transition-all hover:shadow-2xl hover:bg-blue-50">
+      <div className="flex justify-between items-center mb-4">
         <h3
-          className="text-lg font-semibold text-blue-800 cursor-pointer"
+          className="text-xl font-bold text-blue-800 cursor-pointer hover:text-blue-500 transition-all duration-300"
           onClick={() => setShowDetailsModal(true)}
         >
           {challenge.title} 🏆
@@ -139,7 +152,7 @@ const ChallengeCard = ({
                 e.stopPropagation();
                 setShowInviteModal(true);
               }}
-              className="text-blue-600 hover:text-blue-800 text-sm transition-all"
+              className="text-blue-600 hover:text-blue-700 text-base transition-all duration-300"
             >
               Freund einladen 🤝
             </button>
@@ -150,7 +163,7 @@ const ChallengeCard = ({
                 e.stopPropagation();
                 deleteChallenge();
               }}
-              className="text-red-500 hover:text-red-700 text-sm transition-all"
+              className="text-red-500 hover:text-red-700 text-base transition-all duration-300"
             >
               Löschen 🗑️
             </button>
@@ -164,10 +177,10 @@ const ChallengeCard = ({
           onClick={handleCloseModal}
         >
           <div
-            className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl"
+            className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold mb-4 text-blue-800">
+            <h3 className="text-xl font-semibold mb-4 text-blue-800">
               Lade einen Freund ein! 🤝
             </h3>
             <div className="space-y-2">
@@ -178,7 +191,7 @@ const ChallengeCard = ({
                     e.stopPropagation();
                     sendInvite(friend);
                   }}
-                  className="w-full p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-all"
+                  className="w-full p-3 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-all duration-300 transform hover:scale-105"
                 >
                   {friend} einladen
                 </button>
@@ -189,7 +202,7 @@ const ChallengeCard = ({
                 e.stopPropagation();
                 setShowInviteModal(false);
               }}
-              className="mt-4 w-full p-2 bg-gray-300 text-gray-800 rounded-full hover:bg-gray-400 transition-all"
+              className="mt-4 w-full p-3 bg-gray-300 text-gray-800 rounded-full hover:bg-gray-400 transition-all duration-300"
             >
               Abbrechen
             </button>
@@ -203,10 +216,10 @@ const ChallengeCard = ({
           onClick={handleCloseModal}
         >
           <div
-            className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl"
+            className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold mb-4 text-blue-800">
+            <h3 className="text-xl font-semibold mb-4 text-blue-800">
               {challenge.title} - Fortschritt 🏆
             </h3>
             <p className="text-gray-600 mb-4">
@@ -217,9 +230,9 @@ const ChallengeCard = ({
               {getProgress().map((day, index) => (
                 <div
                   key={index}
-                  className="text-center p-2 bg-blue-50 rounded-full"
+                  className="text-center p-2 bg-blue-50 rounded-full hover:bg-blue-100 transition-all duration-300"
                 >
-                  <span className="block text-xl font-bold text-indigo-600">
+                  <span className="block text-xl font-bold text-blue-600">
                     {day.day}
                   </span>
                   <span className="text-2xl">{day.status}</span>
@@ -228,7 +241,7 @@ const ChallengeCard = ({
             </div>
             <button
               onClick={() => setShowDetailsModal(false)}
-              className="mt-4 w-full p-2 bg-gray-300 text-gray-800 rounded-full hover:bg-gray-400 transition-all"
+              className="mt-4 w-full p-3 bg-gray-300 text-gray-800 rounded-full hover:bg-gray-400 transition-all duration-300"
             >
               Schließen
             </button>
@@ -236,12 +249,15 @@ const ChallengeCard = ({
         </div>
       )}
 
-      <div className="mb-2">
-        <h4 className="text-sm font-semibold text-blue-700">Teilnehmer:</h4>
+      <div className="mb-4">
+        <h4 className="text-lg font-semibold text-blue-700">Teilnehmer:</h4>
         {challenge.participants.map((participant) => {
           const streak = challenge.streaks.find(
             (s) => s.user === participant
-          ) || { days: 0, lastConfirmed: [] };
+          ) || {
+            days: 0,
+            lastConfirmed: [],
+          };
           const confirmedDates = Array.isArray(streak.lastConfirmed)
             ? streak.lastConfirmed.map(
                 (date) => new Date(date).toISOString().split("T")[0]
@@ -259,11 +275,11 @@ const ChallengeCard = ({
           return (
             <div
               key={participant}
-              className="flex justify-between items-center mt-1"
+              className="flex justify-between items-center mt-2"
             >
-              <span className="text-gray-600">{participant}</span>
+              <span className="text-gray-700 text-lg">{participant}</span>
               <div className="flex items-center gap-2">
-                <span className="text-orange-500 font-bold">
+                <span className="text-blue-500 font-bold text-lg">
                   🔥 {streak.days}
                 </span>
                 {canPoke && (
@@ -272,7 +288,7 @@ const ChallengeCard = ({
                       e.stopPropagation();
                       pokeFriend(participant);
                     }}
-                    className="text-blue-500 hover:text-blue-700 text-sm transition-all"
+                    className="text-blue-500 hover:text-blue-600 text-base transition-all duration-300"
                   >
                     Anstupsen 👈
                   </button>
@@ -283,7 +299,7 @@ const ChallengeCard = ({
         })}
       </div>
       <div className="flex justify-between items-center">
-        <p className="text-gray-500">
+        <p className="text-gray-500 text-lg">
           {challenge.duration -
             (challenge.streaks.find((s) => s.user === username)?.days ||
               0)}{" "}
@@ -295,10 +311,10 @@ const ChallengeCard = ({
               e.stopPropagation();
               completeToday(challenge._id);
             }}
-            className={`px-4 py-2 rounded-full shadow-lg transition-all z-0 ${
+            className={`px-6 py-3 rounded-full shadow-lg transition-all duration-300 z-0 ${
               challenge.completed
                 ? "bg-gray-400 cursor-not-allowed"
-                : "bg-blue-500 text-white hover:bg-blue-600"
+                : "bg-blue-500 text-white hover:bg-blue-600 hover:text-white"
             }`}
             disabled={challenge.completed}
           >

@@ -14,6 +14,7 @@ const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   friends: { type: [String], default: [] },
+  points: { type: Number, default: 0 }, // Neues Feld für Punkte
 });
 const User = mongoose.model("User", userSchema);
 
@@ -42,6 +43,7 @@ const inviteSchema = new mongoose.Schema({
   invitedBy: { type: String, required: true },
   invitedUser: { type: String, required: true },
   status: { type: String, default: "pending" },
+  token: { type: String, unique: true }, // Eindeutiger Token hinzufügen, um Duplicate-Fehler zu vermeiden
 });
 const Invite = mongoose.model("Invite", inviteSchema);
 
@@ -98,10 +100,10 @@ app.get("/friends", async (req, res) => {
     const user = await User.findOne({ username });
     if (!user)
       return res.status(404).json({ error: "Benutzer nicht gefunden" });
-    // Simuliere Freundesanfragen (ersetze dies mit deiner Logik)
     const friendRequests = await Invite.find({
       invitedUser: username,
       status: "pending",
+      challengeId: { $exists: false }, // Nur Freundschaftsanfragen
     }).distinct("invitedBy");
     res.json({
       friends: user.friends,
@@ -160,11 +162,22 @@ app.post("/confirm", async (req, res) => {
       userStreak.lastConfirmed.push(today);
       userStreak.days += 1;
     }
+
+    // Punkte berechnen
+    const user = await User.findOne({ username });
+    let pointsToAdd = 10; // Basis-Punkte pro Tag
+    if (userStreak.days > 10) {
+      pointsToAdd += (userStreak.days - 10) * 10; // Bonus-Punkte ab Tag 11
+    }
+    user.points += pointsToAdd;
+    await user.save();
     await challenge.save();
+
     res.json({
       message: "Challenge bestätigt!",
       days: userStreak.days,
       completed: challenge.completed,
+      points: user.points, // Rückgabe der neuen Punktzahl
     });
   } catch (err) {
     console.error("Fehler beim Bestätigen der Challenge:", err);
@@ -181,7 +194,12 @@ app.post("/send-invite", async (req, res) => {
     if (!challenge)
       return res.status(404).json({ error: "Challenge nicht gefunden" });
 
-    const invite = new Invite({ challengeId, invitedBy, invitedUser });
+    const invite = new Invite({
+      challengeId,
+      invitedBy,
+      invitedUser,
+      token: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+    });
     await invite.save();
     res.json({ message: "Einladung gesendet" });
   } catch (err) {
@@ -269,8 +287,11 @@ app.get("/notifications", async (req, res) => {
     const notifications = invites.map((invite) => ({
       id: invite._id,
       type: "invite",
-      message: `${invite.invitedBy} hat dich zu ${invite.challengeId.title} eingeladen!`,
-      challengeId: invite.challengeId._id,
+      message: invite.challengeId
+        ? `${invite.invitedBy} hat dich zu "${invite.challengeId.title}" eingeladen!`
+        : `${invite.invitedBy} hat dir eine Freundschaftsanfrage gesendet!`,
+      challengeId: invite.challengeId ? invite.challengeId._id : null,
+      invitedBy: invite.invitedBy,
     }));
     res.json(notifications);
   } catch (err) {
@@ -284,25 +305,129 @@ app.get("/notifications", async (req, res) => {
 app.post("/send-friend-request", async (req, res) => {
   const { fromUser, toUser } = req.body;
   try {
+    console.log("Sending friend request from:", fromUser, "to:", toUser); // Debug-Log
     const user = await User.findOne({ username: fromUser });
     if (!user)
       return res.status(404).json({ error: "Benutzer nicht gefunden" });
+    const targetUser = await User.findOne({ username: toUser });
+    if (!targetUser)
+      return res.status(404).json({ error: "Ziel-Benutzer nicht gefunden" });
     if (user.friends.includes(toUser))
-      return res.status(400).json({ error: "Freund bereits hinzugefügt" });
+      return res.json({ message: "Dieser Benutzer ist bereits dein Freund!" });
 
-    // Simuliere das Senden einer Freundschaftsanfrage (ersetze dies mit deiner Logik)
+    const existingInvite = await Invite.findOne({
+      invitedBy: fromUser,
+      invitedUser: toUser,
+      status: "pending",
+      challengeId: { $exists: false },
+    });
+    if (existingInvite)
+      return res.status(400).json({ error: "Anfrage bereits gesendet" });
+
     const invite = new Invite({
       invitedBy: fromUser,
       invitedUser: toUser,
+      token: Date.now().toString() + Math.random().toString(36).substr(2, 9), // Eindeutiger Token
     });
     await invite.save();
-
+    console.log("Friend request saved:", invite._id); // Debug-Log
     res.json({ message: "Freundschaftsanfrage gesendet" });
   } catch (err) {
-    console.error("Fehler beim Senden der Freundschaftsanfrage:", err);
+    console.error(
+      "Fehler beim Senden der Freundschaftsanfrage:",
+      err.message,
+      err.stack
+    );
     res
       .status(500)
       .json({ error: "Serverfehler beim Senden der Freundschaftsanfrage" });
+  }
+});
+
+app.post("/accept-friend-request", async (req, res) => {
+  const { username, friend } = req.body;
+  try {
+    const invite = await Invite.findOne({
+      invitedBy: friend,
+      invitedUser: username,
+      status: "pending",
+      challengeId: { $exists: false },
+    });
+    if (!invite)
+      return res
+        .status(404)
+        .json({ error: "Freundschaftsanfrage nicht gefunden" });
+
+    const user = await User.findOne({ username });
+    if (!user)
+      return res.status(404).json({ error: "Benutzer nicht gefunden" });
+    const friendUser = await User.findOne({ username: friend });
+    if (!friendUser)
+      return res.status(404).json({ error: "Freund nicht gefunden" });
+
+    user.friends.push(friend);
+    friendUser.friends.push(username);
+    invite.status = "accepted";
+    await user.save();
+    await friendUser.save();
+    await invite.save();
+
+    res.json({ message: "Freundschaftsanfrage angenommen" });
+  } catch (err) {
+    console.error("Fehler beim Annehmen der Freundschaftsanfrage:", err);
+    res
+      .status(500)
+      .json({ error: "Serverfehler beim Annehmen der Freundschaftsanfrage" });
+  }
+});
+
+app.post("/get-invite-id", async (req, res) => {
+  const { invitedBy, invitedUser, challengeTitle } = req.body;
+  try {
+    let invite;
+    if (challengeTitle) {
+      const challenge = await Challenge.findOne({ title: challengeTitle });
+      if (!challenge)
+        return res.status(404).json({ error: "Challenge nicht gefunden" });
+      invite = await Invite.findOne({
+        invitedBy,
+        invitedUser,
+        challengeId: challenge._id,
+        status: "pending",
+      });
+    } else {
+      invite = await Invite.findOne({
+        invitedBy,
+        invitedUser,
+        challengeId: { $exists: false },
+        status: "pending",
+      });
+    }
+    if (!invite)
+      return res.status(404).json({ error: "Einladung nicht gefunden" });
+    res.json({ inviteId: invite._id });
+  } catch (err) {
+    console.error("Fehler beim Abrufen der Einladungs-ID:", err);
+    res
+      .status(500)
+      .json({ error: "Serverfehler beim Abrufen der Einladungs-ID" });
+  }
+});
+
+app.post("/reject-invite", async (req, res) => {
+  const { inviteId, username } = req.body;
+  try {
+    const invite = await Invite.findById(inviteId);
+    if (!invite)
+      return res.status(404).json({ error: "Einladung nicht gefunden" });
+    if (invite.invitedUser !== username)
+      return res.status(403).json({ error: "Nicht autorisiert" });
+    invite.status = "rejected";
+    await invite.save();
+    res.json({ message: "Einladung abgelehnt" });
+  } catch (err) {
+    console.error("Fehler beim Ablehnen der Einladung:", err);
+    res.status(500).json({ error: "Serverfehler beim Ablehnen der Einladung" });
   }
 });
 
