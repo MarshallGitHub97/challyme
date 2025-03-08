@@ -3,6 +3,7 @@ import LoginForm from "./components/LoginForm";
 import ChallengeCard from "./components/ChallengeCard";
 import NewChallengeModal from "./components/NewChallengeModal";
 import Notifications from "./components/Notifications";
+import FriendsTab from "./components/FriendsTab";
 
 const App = () => {
   const [username, setUsername] = useState("");
@@ -19,7 +20,8 @@ const App = () => {
   const [newChallengeIsPublic, setNewChallengeIsPublic] = useState(false);
   const [newFriendUsername, setNewFriendUsername] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [points, setPoints] = useState(0); // Neuer State für Punkte
+  const [points, setPoints] = useState(0);
+  const [activeTab, setActiveTab] = useState("challenges"); // Neuer State für Tabs
 
   const fetchChallenges = () => {
     setIsLoading(true);
@@ -170,7 +172,7 @@ const App = () => {
             return ch;
           });
           setChallenges(updatedChallenges);
-          setPoints(data.points || points); // Aktualisiere Punkte
+          setPoints(data.points || points);
           setMessage(
             data.message + ` (+${data.points - points} Punkte)` ||
               "Challenge updated!"
@@ -230,13 +232,13 @@ const App = () => {
     setFriends([]);
     setFriendRequests([]);
     setNotifications([]);
-    setPoints(0); // Punkte zurücksetzen
+    setPoints(0);
     setMessage("Erfolgreich abgemeldet!");
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-100 to-blue-200 flex flex-col items-center p-4">
-      <h1 className="text-5xl font-bold text-blue-600 mb-8 tracking-wide animate-bounce">
+    <div className="min-h-screen bg-gradient-to-b from-green-100 to-yellow-50 flex flex-col items-center p-4">
+      <h1 className="text-5xl font-bold text-green-600 mb-8 tracking-wide animate-bounce-once">
         Challyme 🏆
       </h1>
 
@@ -258,16 +260,16 @@ const App = () => {
             </p>
           )}
           <div className="flex flex-col items-center mb-6">
-            <div className="flex gap-2 mb-2">
+            <div className="flex gap-4 mb-4">
               <button
                 onClick={() =>
                   document
                     .getElementById("notifications-modal")
                     .classList.toggle("hidden")
                 }
-                className="bg-blue-500 text-white px-5 py-3 rounded-full shadow-lg hover:bg-blue-600 transition-all duration-300 transform hover:scale-110 flex items-center animate-pulse"
+                className="relative bg-green-500 text-white px-4 py-4 rounded-full shadow-lg hover:bg-green-600 transition-all duration-300 transform hover:scale-110 animate-pulse"
               >
-                <span className="mr-2">🔔</span> Benachrichtigungen
+                🔔
                 {notifications.length > 0 && (
                   <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center animate-bounce">
                     {notifications.length}
@@ -276,13 +278,14 @@ const App = () => {
               </button>
               <button
                 onClick={handleLogout}
-                className="bg-red-500 text-white px-5 py-3 rounded-full shadow-lg hover:bg-red-600 transition-all duration-300 transform hover:scale-110"
+                className="bg-red-500 text-white px-4 py-4 rounded-full shadow-lg hover:bg-red-600 transition-all duration-300 transform hover:scale-110"
               >
-                Abmelden
+                🚪
               </button>
             </div>
-            <h2 className="text-2xl font-semibold text-blue-700 text-center">
-              Hallo, {username}! 💪 Du rockst das! Punkte: {points}
+            <h2 className="text-2xl font-semibold text-green-700 text-center">
+              Hallo, {username}!<br />
+              💪 Du rockst das! Punkte: {points}
             </h2>
           </div>
 
@@ -295,104 +298,162 @@ const App = () => {
             fetchNotifications={fetchNotifications}
           />
 
-          <div className="mb-6">
-            <h3 className="text-xl font-semibold text-blue-700 mb-2">
-              Freund hinzufügen 🤝
-            </h3>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Freundes-Benutzername"
-                value={newFriendUsername}
-                onChange={(e) => setNewFriendUsername(e.target.value)}
-                className="w-full p-3 border border-blue-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-400 shadow-md transition-all duration-300"
-              />
-              <button
-                onClick={sendFriendRequest}
-                className="bg-blue-500 text-white px-5 py-3 rounded-full shadow-lg hover:bg-blue-600 transition-all duration-300 transform hover:scale-110"
-              >
-                Anfrage senden
-              </button>
-            </div>
-            {friendRequests.length > 0 && (
-              <div className="mt-4">
-                <h4 className="text-lg font-semibold text-blue-600">
-                  Freundschaftsanfragen
-                </h4>
-                {friendRequests.map((friend) => (
-                  <div
-                    key={friend}
-                    className="flex justify-between items-center mt-2 p-3 bg-white rounded-2xl shadow-md hover:bg-blue-50 transition-all duration-300"
-                  >
-                    <span className="text-gray-700 text-lg">{friend}</span>
-                    <button
-                      onClick={() => acceptFriendRequest(friend)}
-                      className="bg-blue-500 text-white px-4 py-2 rounded-full hover:bg-blue-600 transition-all duration-300 transform hover:scale-110"
-                    >
-                      Akzeptieren
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-end mb-6">
+          <div className="flex justify-around mb-4">
             <button
-              onClick={() => {
-                setNewChallengeTitle("");
-                setNewChallengeDuration("");
-                setNewChallengeStartDate("");
-                setNewChallengeIsPublic(false);
-                document
-                  .getElementById("new-challenge-modal")
-                  .classList.toggle("hidden");
-              }}
-              className="bg-blue-500 text-white px-5 py-3 rounded-full shadow-lg hover:bg-blue-600 transition-all duration-300 transform hover:scale-110 flex items-center"
+              onClick={() => setActiveTab("challenges")}
+              className={`px-4 py-2 rounded-full shadow-lg transition-all duration-300 ${
+                activeTab === "challenges"
+                  ? "bg-yellow-500 text-white"
+                  : "bg-gray-200 text-gray-700"
+              }`}
             >
-              <span className="mr-2">🏆</span> Neue Challenge
+              Challenges
+            </button>
+            <button
+              onClick={() => setActiveTab("friends")}
+              className={`px-4 py-2 rounded-full shadow-lg transition-all duration-300 ${
+                activeTab === "friends"
+                  ? "bg-yellow-500 text-white"
+                  : "bg-gray-200 text-gray-700"
+              }`}
+            >
+              Freunde
             </button>
           </div>
 
-          <NewChallengeModal
-            newChallengeTitle={newChallengeTitle}
-            setNewChallengeTitle={setNewChallengeTitle}
-            newChallengeDuration={newChallengeDuration}
-            setNewChallengeDuration={setNewChallengeDuration}
-            newChallengeStartDate={newChallengeStartDate}
-            setNewChallengeStartDate={setNewChallengeStartDate}
-            newChallengeIsPublic={newChallengeIsPublic}
-            setNewChallengeIsPublic={setNewChallengeIsPublic}
-            createChallenge={createChallenge}
-          />
+          {activeTab === "challenges" && (
+            <>
+              <div className="mb-6">
+                <h3 className="text-xl font-semibold text-green-700 mb-2">
+                  Freund hinzufügen 🤝
+                </h3>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Freundes-Benutzername"
+                    value={newFriendUsername}
+                    onChange={(e) => setNewFriendUsername(e.target.value)}
+                    className="w-full p-2 border border-green-300 rounded-full focus:outline-none focus:ring-2 focus:ring-yellow-400 shadow-md transition-all duration-300"
+                  />
+                  <button
+                    onClick={sendFriendRequest}
+                    className="bg-yellow-500 text-white px-5 py-2 rounded-full shadow-lg hover:bg-green-600 transition-all duration-300 transform hover:scale-110"
+                  >
+                    Anfrage senden
+                  </button>
+                </div>
+                {friendRequests.length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-lg font-semibold text-green-600">
+                      Freundschaftsanfragen
+                    </h4>
+                    {friendRequests.map((friend) => (
+                      <div
+                        key={friend}
+                        className="flex justify-between items-center mt-2 p-3 bg-white rounded-2xl shadow-md hover:bg-green-50 transition-all duration-300"
+                      >
+                        <span className="text-gray-700 text-lg">{friend}</span>
+                        <button
+                          onClick={() => acceptFriendRequest(friend)}
+                          className="bg-green-500 text-white px-4 py-2 rounded-full hover:bg-yellow-600 transition-all duration-300 transform hover:scale-110"
+                        >
+                          Akzeptieren
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-          {isLoading && (
-            <p className="text-center text-blue-500 text-xl animate-pulse">
-              Laden... ⏳
-            </p>
+              <div className="flex justify-end mb-6">
+                <button
+                  onClick={() => {
+                    setNewChallengeTitle("");
+                    setNewChallengeDuration("");
+                    setNewChallengeStartDate("");
+                    setNewChallengeIsPublic(false);
+                    document
+                      .getElementById("new-challenge-modal")
+                      .classList.toggle("hidden");
+                  }}
+                  className="bg-yellow-500 text-white px-5 py-3 rounded-full shadow-lg hover:bg-green-600 transition-all duration-300 transform hover:scale-110 flex items-center"
+                >
+                  <span className="mr-2">🏆</span> Neue Challenge
+                </button>
+              </div>
+
+              <NewChallengeModal
+                newChallengeTitle={newChallengeTitle}
+                setNewChallengeTitle={setNewChallengeTitle}
+                newChallengeDuration={newChallengeDuration}
+                setNewChallengeDuration={setNewChallengeDuration}
+                newChallengeStartDate={newChallengeStartDate}
+                setNewChallengeStartDate={setNewChallengeStartDate}
+                newChallengeIsPublic={newChallengeIsPublic}
+                setNewChallengeIsPublic={setNewChallengeIsPublic}
+                createChallenge={createChallenge}
+              />
+
+              {isLoading && (
+                <p className="text-center text-green-500 text-xl animate-pulse">
+                  Laden... ⏳
+                </p>
+              )}
+              {challenges.length === 0 && !isLoading && (
+                <p className="text-center text-gray-500 text-lg">
+                  Keine Challenges gefunden. Erstelle eine neue!
+                </p>
+              )}
+              <div className="space-y-4">
+                {challenges
+                  .filter((challenge) =>
+                    challenge.participants.includes(username)
+                  )
+                  .map((challenge) => (
+                    <ChallengeCard
+                      key={challenge._id}
+                      challenge={challenge}
+                      username={username}
+                      friends={friends}
+                      completeToday={completeToday}
+                      setMessage={setMessage}
+                      fetchChallenges={fetchChallenges}
+                    />
+                  ))}
+              </div>
+            </>
           )}
-          {challenges.length === 0 && !isLoading && (
-            <p className="text-center text-gray-500 text-lg">
-              Keine Challenges gefunden. Erstelle eine neue!
-            </p>
+
+          {activeTab === "friends" && (
+            <FriendsTab
+              username={username}
+              friends={friends}
+              setMessage={setMessage}
+            />
           )}
-          <div className="space-y-4">
-            {challenges
-              .filter((challenge) => challenge.participants.includes(username))
-              .map((challenge) => (
-                <ChallengeCard
-                  key={challenge._id}
-                  challenge={challenge}
-                  username={username}
-                  friends={friends}
-                  completeToday={completeToday}
-                  setMessage={setMessage}
-                  fetchChallenges={fetchChallenges}
-                />
-              ))}
-          </div>
         </div>
       )}
+
+      <style jsx global>{`
+        @keyframes bounce-once {
+          0%,
+          20%,
+          50%,
+          80%,
+          100% {
+            transform: translateY(0);
+          }
+          40% {
+            transform: translateY(-30px);
+          }
+          60% {
+            transform: translateY(-15px);
+          }
+        }
+        .animate-bounce-once {
+          animation: bounce-once 1s ease;
+        }
+      `}</style>
     </div>
   );
 };

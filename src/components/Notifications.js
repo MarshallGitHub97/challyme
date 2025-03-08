@@ -101,7 +101,7 @@ const Notifications = ({
       className="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
     >
       <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl transform transition-all scale-95">
-        <h3 className="text-xl font-semibold mb-4 text-blue-800">
+        <h3 className="text-xl font-semibold mb-4 text-green-800">
           Benachrichtigungen 🔔
         </h3>
         {notifications.length === 0 ? (
@@ -112,7 +112,7 @@ const Notifications = ({
           notifications.map((notification) => (
             <div
               key={notification.id}
-              className="mb-2 flex justify-between items-center p-3 bg-blue-50 rounded-2xl hover:bg-blue-100 transition-all duration-300"
+              className="mb-2 flex justify-between items-center p-3 bg-green-50 rounded-2xl hover:bg-yellow-100 transition-all duration-300"
             >
               <span className="text-gray-700 text-lg">
                 {notification.message}
@@ -122,7 +122,7 @@ const Notifications = ({
                   <>
                     <button
                       onClick={() => handleAcceptInvite(notification)}
-                      className="bg-blue-500 text-white px-4 py-2 rounded-full hover:bg-blue-600 transition-all duration-300 transform hover:scale-110"
+                      className="bg-green-500 text-white px-4 py-2 rounded-full hover:bg-yellow-600 transition-all duration-300 transform hover:scale-110"
                     >
                       Akzeptieren
                     </button>
@@ -137,7 +137,7 @@ const Notifications = ({
                   <>
                     <button
                       onClick={() => handleAcceptFriendRequest(notification)}
-                      className="bg-blue-500 text-white px-4 py-2 rounded-full hover:bg-blue-600 transition-all duration-300 transform hover:scale-110"
+                      className="bg-green-500 text-white px-4 py-2 rounded-full hover:bg-yellow-600 transition-all duration-300 transform hover:scale-110"
                     >
                       Akzeptieren
                     </button>

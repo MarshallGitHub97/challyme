@@ -14,7 +14,7 @@ const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   friends: { type: [String], default: [] },
-  points: { type: Number, default: 0 }, // Neues Feld für Punkte
+  points: { type: Number, default: 0 },
 });
 const User = mongoose.model("User", userSchema);
 
@@ -31,6 +31,13 @@ const challengeSchema = new mongoose.Schema({
     },
   ],
   completed: { type: Boolean, default: false },
+  messages: [
+    {
+      user: String,
+      content: String,
+      timestamp: { type: Date, default: Date.now },
+    },
+  ],
 });
 const Challenge = mongoose.model("Challenge", challengeSchema);
 
@@ -43,9 +50,17 @@ const inviteSchema = new mongoose.Schema({
   invitedBy: { type: String, required: true },
   invitedUser: { type: String, required: true },
   status: { type: String, default: "pending" },
-  token: { type: String, unique: true }, // Eindeutiger Token hinzufügen, um Duplicate-Fehler zu vermeiden
+  token: { type: String, unique: true },
 });
 const Invite = mongoose.model("Invite", inviteSchema);
+
+const messageSchema = new mongoose.Schema({
+  fromUser: { type: String, required: true },
+  toUser: { type: String, required: true },
+  content: { type: String, required: true },
+  timestamp: { type: Date, default: Date.now },
+});
+const Message = mongoose.model("Message", messageSchema);
 
 // API-Routen
 app.post("/register", async (req, res) => {
@@ -103,7 +118,7 @@ app.get("/friends", async (req, res) => {
     const friendRequests = await Invite.find({
       invitedUser: username,
       status: "pending",
-      challengeId: { $exists: false }, // Nur Freundschaftsanfragen
+      challengeId: { $exists: false },
     }).distinct("invitedBy");
     res.json({
       friends: user.friends,
@@ -124,6 +139,7 @@ app.post("/create-challenge", async (req, res) => {
       startDate,
       participants: [username],
       streaks: [{ user: username, days: 0, lastConfirmed: [] }],
+      messages: [],
     });
     await challenge.save();
     res.status(201).json({ message: "Challenge erstellt", challenge });
@@ -163,11 +179,10 @@ app.post("/confirm", async (req, res) => {
       userStreak.days += 1;
     }
 
-    // Punkte berechnen
     const user = await User.findOne({ username });
-    let pointsToAdd = 10; // Basis-Punkte pro Tag
+    let pointsToAdd = 10;
     if (userStreak.days > 10) {
-      pointsToAdd += (userStreak.days - 10) * 10; // Bonus-Punkte ab Tag 11
+      pointsToAdd += (userStreak.days - 10) * 10;
     }
     user.points += pointsToAdd;
     await user.save();
@@ -177,7 +192,7 @@ app.post("/confirm", async (req, res) => {
       message: "Challenge bestätigt!",
       days: userStreak.days,
       completed: challenge.completed,
-      points: user.points, // Rückgabe der neuen Punktzahl
+      points: user.points,
     });
   } catch (err) {
     console.error("Fehler beim Bestätigen der Challenge:", err);
@@ -250,7 +265,10 @@ app.post("/accept-invite", async (req, res) => {
 app.post("/poke", async (req, res) => {
   const { username, friend, challengeId } = req.body;
   try {
-    res.json({ message: `${friend} wurde angestupsen!` });
+    const challenge = await Challenge.findById(challengeId);
+    if (!challenge)
+      return res.status(404).json({ error: "Challenge nicht gefunden" });
+    res.json({ message: `${friend} wurde angestupst!` });
   } catch (err) {
     console.error("Fehler beim Anstupsen:", err);
     res.status(500).json({ error: "Serverfehler beim Anstupsen" });
@@ -305,7 +323,7 @@ app.get("/notifications", async (req, res) => {
 app.post("/send-friend-request", async (req, res) => {
   const { fromUser, toUser } = req.body;
   try {
-    console.log("Sending friend request from:", fromUser, "to:", toUser); // Debug-Log
+    console.log("Sending friend request from:", fromUser, "to:", toUser);
     const user = await User.findOne({ username: fromUser });
     if (!user)
       return res.status(404).json({ error: "Benutzer nicht gefunden" });
@@ -327,10 +345,10 @@ app.post("/send-friend-request", async (req, res) => {
     const invite = new Invite({
       invitedBy: fromUser,
       invitedUser: toUser,
-      token: Date.now().toString() + Math.random().toString(36).substr(2, 9), // Eindeutiger Token
+      token: Date.now().toString() + Math.random().toString(36).substr(2, 9),
     });
     await invite.save();
-    console.log("Friend request saved:", invite._id); // Debug-Log
+    console.log("Friend request saved:", invite._id);
     res.json({ message: "Freundschaftsanfrage gesendet" });
   } catch (err) {
     console.error(
@@ -431,7 +449,69 @@ app.post("/reject-invite", async (req, res) => {
   }
 });
 
-// Statische Dateien und Fallback MÜSSEN AM ENDE stehen
+app.post("/send-message", async (req, res) => {
+  const { fromUser, toUser, content } = req.body;
+  try {
+    const message = new Message({ fromUser, toUser, content });
+    await message.save();
+    res.json({ message: "Nachricht gesendet", messageId: message._id });
+  } catch (err) {
+    console.error("Fehler beim Senden der Nachricht:", err);
+    res.status(500).json({ error: "Serverfehler beim Senden der Nachricht" });
+  }
+});
+
+app.get("/messages", async (req, res) => {
+  const { user1, user2 } = req.query;
+  try {
+    const messages = await Message.find({
+      $or: [
+        { fromUser: user1, toUser: user2 },
+        { fromUser: user2, toUser: user1 },
+      ],
+    }).sort({ timestamp: 1 });
+    res.json(messages);
+  } catch (err) {
+    console.error("Fehler beim Abrufen der Nachrichten:", err);
+    res
+      .status(500)
+      .json({ error: "Serverfehler beim Abrufen der Nachrichten" });
+  }
+});
+
+app.post("/send-challenge-message", async (req, res) => {
+  const { challengeId, user, content } = req.body;
+  try {
+    const challenge = await Challenge.findById(challengeId);
+    if (!challenge)
+      return res.status(404).json({ error: "Challenge nicht gefunden" });
+    challenge.messages.push({ user, content });
+    await challenge.save();
+    res.json({ message: "Nachricht gesendet" });
+  } catch (err) {
+    console.error("Fehler beim Senden der Challenge-Nachricht:", err);
+    res
+      .status(500)
+      .json({ error: "Serverfehler beim Senden der Challenge-Nachricht" });
+  }
+});
+
+app.get("/challenge-messages", async (req, res) => {
+  const { challengeId } = req.query;
+  try {
+    const challenge = await Challenge.findById(challengeId);
+    if (!challenge)
+      return res.status(404).json({ error: "Challenge nicht gefunden" });
+    res.json(challenge.messages);
+  } catch (err) {
+    console.error("Fehler beim Abrufen der Challenge-Nachrichten:", err);
+    res
+      .status(500)
+      .json({ error: "Serverfehler beim Abrufen der Challenge-Nachrichten" });
+  }
+});
+
+// Statische Dateien und Fallback
 app.use(express.static(path.join(__dirname, "../build")));
 app.get("*", (req, res) => {
   console.log("Fallback route hit:", req.url);
