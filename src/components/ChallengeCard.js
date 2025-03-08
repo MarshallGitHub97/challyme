@@ -14,6 +14,10 @@ const ChallengeCard = ({
   const [chatMessages, setChatMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [showMotivation, setShowMotivation] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [images, setImages] = useState([]);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedDay, setSelectedDay] = useState(null);
 
   const motivations = [
     "Nur noch ein paar Stunden! Du schaffst das! 💪",
@@ -31,12 +35,22 @@ const ChallengeCard = ({
           setMessage("Fehler beim Abrufen der Nachrichten: " + err.message)
         );
     };
-
     fetchChatMessages();
+    const interval = setInterval(fetchChatMessages, 5000);
+    return () => clearInterval(interval);
+  }, [challenge._id, setMessage]);
 
-    const interval = setInterval(() => {
-      fetchChatMessages();
-    }, 5000);
+  useEffect(() => {
+    const fetchImages = () => {
+      fetch(`/challenge-images?challengeId=${challenge._id}`)
+        .then((res) => res.json())
+        .then((data) => setImages(data || []))
+        .catch((err) =>
+          setMessage("Fehler beim Abrufen der Bilder: " + err.message)
+        );
+    };
+    fetchImages();
+    const interval = setInterval(fetchImages, 5000);
     return () => clearInterval(interval);
   }, [challenge._id, setMessage]);
 
@@ -64,9 +78,8 @@ const ChallengeCard = ({
         setShowMotivation(false);
       }
     };
-
     checkMotivation();
-    const interval = setInterval(checkMotivation, 60000); // Alle Minute prüfen
+    const interval = setInterval(checkMotivation, 60000);
     return () => clearInterval(interval);
   }, [challenge, username]);
 
@@ -91,6 +104,34 @@ const ChallengeCard = ({
       })
       .catch((err) =>
         setMessage("Fehler beim Senden der Nachricht: " + err.message)
+      );
+  };
+
+  const handleImageUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage("Bildgröße darf maximal 5 MB betragen!");
+      return;
+    }
+    const formData = new FormData();
+    formData.append("image", file);
+    formData.append("challengeId", challenge._id);
+    formData.append("username", username);
+    formData.append("day", selectedDay || 1); // Standard-Tag 1, wenn kein Tag ausgewählt
+
+    fetch("/upload-challenge-image", {
+      method: "POST",
+      body: formData,
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        setMessage(data.message || data.error);
+        setShowUploadModal(false);
+        setSelectedDay(null); // Tag zurücksetzen
+      })
+      .catch((err) =>
+        setMessage("Fehler beim Hochladen des Bildes: " + err.message)
       );
   };
 
@@ -186,6 +227,7 @@ const ChallengeCard = ({
       progress.push({
         day: currentDay,
         status: status,
+        images: images.filter((img) => img.day === currentDay) || [],
       });
     }
     return progress;
@@ -210,6 +252,9 @@ const ChallengeCard = ({
       setShowDetailsModal(false);
       setShowInviteModal(false);
       setShowChatModal(false);
+      setShowUploadModal(false);
+      setSelectedImage(null);
+      setSelectedDay(null);
     }
   };
 
@@ -224,26 +269,35 @@ const ChallengeCard = ({
         </h3>
         <div className="flex gap-2">
           {challenge.participants.includes(username) && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowInviteModal(true);
-              }}
-              className="text-yellow-600 hover:text-green-700 text-base transition-all duration-300"
-            >
-              Freund einladen 🤝
-            </button>
-          )}
-          {challenge.participants.includes(username) && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowChatModal(true);
-              }}
-              className="text-yellow-600 hover:text-green-700 text-base transition-all duration-300"
-            >
-              Chat 💬
-            </button>
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowInviteModal(true);
+                }}
+                className="text-yellow-600 hover:text-green-700 transition-all duration-300"
+              >
+                🤝
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowChatModal(true);
+                }}
+                className="text-yellow-600 hover:text-green-700 transition-all duration-300"
+              >
+                💬
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowUploadModal(true);
+                }}
+                className="text-yellow-600 hover:text-green-700 transition-all duration-300"
+              >
+                📸
+              </button>
+            </>
           )}
           {challenge.participants.includes(username) && (
             <button
@@ -251,9 +305,9 @@ const ChallengeCard = ({
                 e.stopPropagation();
                 deleteChallenge();
               }}
-              className="text-red-500 hover:text-red-700 text-base transition-all duration-300"
+              className="text-red-500 hover:text-red-700 transition-all duration-300"
             >
-              Löschen 🗑️
+              🗑️
             </button>
           )}
         </div>
@@ -318,12 +372,18 @@ const ChallengeCard = ({
               {getProgress().map((day, index) => (
                 <div
                   key={index}
-                  className="text-center p-2 bg-green-50 rounded-full hover:bg-yellow-100 transition-all duration-300"
+                  className="text-center p-2 bg-green-50 rounded-full hover:bg-yellow-100 transition-all duration-300 cursor-pointer"
+                  onClick={() =>
+                    day.images.length > 0 && setSelectedImage(day.images[0])
+                  }
                 >
                   <span className="block text-xl font-bold text-green-600">
-                    {day.day}
+                    Tag {day.day}
                   </span>
                   <span className="text-2xl">{day.status}</span>
+                  {day.images.length > 0 && (
+                    <span className="text-yellow-500 text-sm">📷</span>
+                  )}
                 </div>
               ))}
             </div>
@@ -384,6 +444,76 @@ const ChallengeCard = ({
             </div>
             <button
               onClick={() => setShowChatModal(false)}
+              className="mt-4 w-full p-3 bg-gray-300 text-gray-800 rounded-full hover:bg-gray-400 transition-all duration-300"
+            >
+              Schließen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showUploadModal && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-1000 modal-overlay"
+          onClick={handleCloseModal}
+        >
+          <div
+            className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-semibold mb-4 text-green-800">
+              Bild hochladen 📸
+            </h3>
+            <select
+              value={selectedDay || ""}
+              onChange={(e) => setSelectedDay(parseInt(e.target.value))}
+              className="w-full p-2 mb-4 border border-green-300 rounded-full focus:outline-none focus:ring-2 focus:ring-yellow-400"
+            >
+              <option value="">Wähle einen Tag</option>
+              {Array.from({ length: challenge.duration }, (_, i) => i + 1).map(
+                (day) => (
+                  <option key={day} value={day}>
+                    Tag {day}
+                  </option>
+                )
+              )}
+            </select>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="w-full p-2 border border-green-300 rounded-full focus:outline-none focus:ring-2 focus:ring-yellow-400"
+            />
+            <button
+              onClick={() => setShowUploadModal(false)}
+              className="mt-4 w-full p-3 bg-gray-300 text-gray-800 rounded-full hover:bg-gray-400 transition-all duration-300"
+            >
+              Schließen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {selectedImage && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-1000 modal-overlay"
+          onClick={handleCloseModal}
+        >
+          <div
+            className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={`/uploads/${selectedImage.path.split("/").pop()}`}
+              alt={`Upload von ${selectedImage.user}`}
+              className="w-full h-auto max-h-96 object-contain mb-4 rounded-lg"
+            />
+            <p className="text-gray-600 text-center">
+              Hochgeladen von: {selectedImage.user} am{" "}
+              {new Date(selectedImage.timestamp).toLocaleString()}
+            </p>
+            <button
+              onClick={() => setSelectedImage(null)}
               className="mt-4 w-full p-3 bg-gray-300 text-gray-800 rounded-full hover:bg-gray-400 transition-all duration-300"
             >
               Schließen

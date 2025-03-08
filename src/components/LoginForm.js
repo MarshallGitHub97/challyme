@@ -23,7 +23,12 @@ const LoginForm = ({
         }
         return res.json();
       })
-      .then((data) => setMessage(data.message || data.error))
+      .then((data) => {
+        setMessage(data.message || data.error);
+        if (data.message === "Benutzer erstellt") {
+          login(); // Automatisches Einloggen nach Registrierung
+        }
+      })
       .catch((err) => setMessage("Netzwerkfehler: " + err.message));
   };
 
@@ -46,6 +51,8 @@ const LoginForm = ({
           setMessage(data.error);
         } else {
           setIsLoggedIn(true);
+          localStorage.setItem("username", username); // Speichere Username
+          localStorage.setItem("isLoggedIn", "true"); // Speichere Login-Status
           setMessage("");
         }
       })

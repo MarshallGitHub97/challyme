@@ -3,11 +3,23 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const path = require("path");
+const multer = require("multer"); // Für Bild-Uploads
 require("dotenv").config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Multer-Konfiguration für Bild-Uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/");
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  },
+});
+const upload = multer({ storage: storage });
 
 // Schemas
 const userSchema = new mongoose.Schema({
@@ -36,6 +48,14 @@ const challengeSchema = new mongoose.Schema({
       user: String,
       content: String,
       timestamp: { type: Date, default: Date.now },
+    },
+  ],
+  images: [
+    {
+      user: String,
+      path: String,
+      timestamp: { type: Date, default: Date.now },
+      day: { type: Number, default: 1 },
     },
   ],
 });
@@ -140,6 +160,7 @@ app.post("/create-challenge", async (req, res) => {
       participants: [username],
       streaks: [{ user: username, days: 0, lastConfirmed: [] }],
       messages: [],
+      images: [],
     });
     await challenge.save();
     res.status(201).json({ message: "Challenge erstellt", challenge });
@@ -325,11 +346,10 @@ app.post("/send-friend-request", async (req, res) => {
   try {
     console.log("Sending friend request from:", fromUser, "to:", toUser);
     const user = await User.findOne({ username: fromUser });
-    if (!user)
-      return res.status(404).json({ error: "Benutzer nicht gefunden" });
+    if (!user) return res.json({ message: "Benutzer nicht gefunden" });
     const targetUser = await User.findOne({ username: toUser });
     if (!targetUser)
-      return res.status(404).json({ error: "Ziel-Benutzer nicht gefunden" });
+      return res.json({ message: "Ziel-Benutzer nicht gefunden" });
     if (user.friends.includes(toUser))
       return res.json({ message: "Dieser Benutzer ist bereits dein Freund!" });
 
@@ -340,7 +360,7 @@ app.post("/send-friend-request", async (req, res) => {
       challengeId: { $exists: false },
     });
     if (existingInvite)
-      return res.status(400).json({ error: "Anfrage bereits gesendet" });
+      return res.json({ message: "Anfrage bereits gesendet" });
 
     const invite = new Invite({
       invitedBy: fromUser,
@@ -511,8 +531,59 @@ app.get("/challenge-messages", async (req, res) => {
   }
 });
 
+app.post(
+  "/upload-challenge-image",
+  upload.single("image"),
+  async (req, res) => {
+    const { challengeId, username, day } = req.body;
+    try {
+      const challenge = await Challenge.findById(challengeId);
+      if (!challenge)
+        return res.status(404).json({ error: "Challenge nicht gefunden" });
+      if (!challenge.participants.includes(username))
+        return res.status(403).json({ error: "Nicht autorisiert" });
+
+      const file = req.file;
+      if (!file)
+        return res.status(400).json({ error: "Keine Datei hochgeladen" });
+      if (file.size > 5 * 1024 * 1024)
+        return res
+          .status(400)
+          .json({ error: "Bildgröße darf maximal 5 MB betragen!" });
+
+      const imagePath = req.file.path;
+      challenge.images = challenge.images || [];
+      challenge.images.push({
+        user: username,
+        path: imagePath,
+        timestamp: Date.now(),
+        day: parseInt(day) || 1, // Standard-Tag 1, falls kein Tag angegeben
+      });
+      await challenge.save();
+      res.json({ message: "Bild erfolgreich hochgeladen", imagePath });
+    } catch (err) {
+      console.error("Fehler beim Hochladen des Bildes:", err);
+      res.status(500).json({ error: "Serverfehler beim Hochladen des Bildes" });
+    }
+  }
+);
+
+app.get("/challenge-images", async (req, res) => {
+  const { challengeId } = req.query;
+  try {
+    const challenge = await Challenge.findById(challengeId);
+    if (!challenge)
+      return res.status(404).json({ error: "Challenge nicht gefunden" });
+    res.json(challenge.images || []);
+  } catch (err) {
+    console.error("Fehler beim Abrufen der Bilder:", err);
+    res.status(500).json({ error: "Serverfehler beim Abrufen der Bilder" });
+  }
+});
+
 // Statische Dateien und Fallback
 app.use(express.static(path.join(__dirname, "../build")));
+app.use("/uploads", express.static("uploads")); // Statischer Zugriff auf Uploads
 app.get("*", (req, res) => {
   console.log("Fallback route hit:", req.url);
   res.sendFile(path.join(__dirname, "../build", "index.html"));

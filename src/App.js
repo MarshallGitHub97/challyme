@@ -6,10 +6,14 @@ import Notifications from "./components/Notifications";
 import FriendsTab from "./components/FriendsTab";
 
 const App = () => {
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(
+    () => localStorage.getItem("username") || ""
+  );
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(
+    () => localStorage.getItem("isLoggedIn") === "true"
+  );
   const [challenges, setChallenges] = useState([]);
   const [friends, setFriends] = useState([]);
   const [friendRequests, setFriendRequests] = useState([]);
@@ -21,7 +25,7 @@ const App = () => {
   const [newFriendUsername, setNewFriendUsername] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [points, setPoints] = useState(0);
-  const [activeTab, setActiveTab] = useState("challenges"); // Neuer State für Tabs
+  const [activeTab, setActiveTab] = useState("challenges");
 
   const fetchChallenges = () => {
     setIsLoading(true);
@@ -225,6 +229,8 @@ const App = () => {
   };
 
   const handleLogout = () => {
+    localStorage.removeItem("username");
+    localStorage.removeItem("isLoggedIn");
     setIsLoggedIn(false);
     setUsername("");
     setPassword("");
@@ -267,7 +273,7 @@ const App = () => {
                     .getElementById("notifications-modal")
                     .classList.toggle("hidden")
                 }
-                className="relative bg-green-500 text-white px-4 py-4 rounded-full shadow-lg hover:bg-green-600 transition-all duration-300 transform hover:scale-110 animate-pulse"
+                className="relative bg-blue-500 text-white px-4 py-4 rounded-full shadow-lg hover:bg-blue-600 transition-all duration-300 transform hover:scale-110 animate-pulse"
               >
                 🔔
                 {notifications.length > 0 && (
@@ -298,7 +304,7 @@ const App = () => {
             fetchNotifications={fetchNotifications}
           />
 
-          <div className="flex justify-around mb-4">
+          <div className="flex justify-start mb-4 space-x-2">
             <button
               onClick={() => setActiveTab("challenges")}
               className={`px-4 py-2 rounded-full shadow-lg transition-all duration-300 ${
@@ -324,45 +330,49 @@ const App = () => {
           {activeTab === "challenges" && (
             <>
               <div className="mb-6">
-                <h3 className="text-xl font-semibold text-green-700 mb-2">
-                  Freund hinzufügen 🤝
-                </h3>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="Freundes-Benutzername"
-                    value={newFriendUsername}
-                    onChange={(e) => setNewFriendUsername(e.target.value)}
-                    className="w-full p-2 border border-green-300 rounded-full focus:outline-none focus:ring-2 focus:ring-yellow-400 shadow-md transition-all duration-300"
-                  />
-                  <button
-                    onClick={sendFriendRequest}
-                    className="bg-yellow-500 text-white px-5 py-2 rounded-full shadow-lg hover:bg-green-600 transition-all duration-300 transform hover:scale-110"
-                  >
-                    Anfrage senden
-                  </button>
-                </div>
-                {friendRequests.length > 0 && (
-                  <div className="mt-4">
-                    <h4 className="text-lg font-semibold text-green-600">
-                      Freundschaftsanfragen
-                    </h4>
-                    {friendRequests.map((friend) => (
-                      <div
-                        key={friend}
-                        className="flex justify-between items-center mt-2 p-3 bg-white rounded-2xl shadow-md hover:bg-green-50 transition-all duration-300"
-                      >
-                        <span className="text-gray-700 text-lg">{friend}</span>
-                        <button
-                          onClick={() => acceptFriendRequest(friend)}
-                          className="bg-green-500 text-white px-4 py-2 rounded-full hover:bg-yellow-600 transition-all duration-300 transform hover:scale-110"
-                        >
-                          Akzeptieren
-                        </button>
-                      </div>
-                    ))}
+                <div className="bg-white rounded-3xl p-6 shadow-lg hover:shadow-2xl hover:bg-green-50 transition-all duration-300">
+                  <h3 className="text-xl font-semibold text-green-700 mb-4">
+                    Freund hinzufügen 🤝
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Freundes-Benutzername"
+                      value={newFriendUsername}
+                      onChange={(e) => setNewFriendUsername(e.target.value)}
+                      className="w-full p-2 border border-green-300 rounded-full focus:outline-none focus:ring-2 focus:ring-yellow-400 shadow-md transition-all duration-300"
+                    />
+                    <button
+                      onClick={sendFriendRequest}
+                      className="bg-yellow-500 text-white p-2 rounded-full shadow-lg hover:bg-green-600 transition-all duration-300 transform hover:scale-110"
+                    >
+                      ➕
+                    </button>
                   </div>
-                )}
+                  {friendRequests.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-lg font-semibold text-green-600">
+                        Freundschaftsanfragen
+                      </h4>
+                      {friendRequests.map((friend) => (
+                        <div
+                          key={friend}
+                          className="flex justify-between items-center mt-2 p-3 bg-white rounded-2xl shadow-md hover:bg-green-50 transition-all duration-300"
+                        >
+                          <span className="text-gray-700 text-lg">
+                            {friend}
+                          </span>
+                          <button
+                            onClick={() => acceptFriendRequest(friend)}
+                            className="bg-green-500 text-white px-4 py-2 rounded-full hover:bg-yellow-600 transition-all duration-300 transform hover:scale-110"
+                          >
+                            Akzeptieren
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex justify-end mb-6">
