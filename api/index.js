@@ -1,16 +1,27 @@
 const express = require("express");
 const mongoose = require("mongoose");
+const bcrypt = require("bcrypt");
 const cors = require("cors");
-const bcrypt = require("bcryptjs");
+const multer = require("multer");
 const path = require("path");
-const multer = require("multer"); // Für Bild-Uploads
+const fs = require("fs"); // Hinzufügen des fs-Moduls
 require("dotenv").config();
+
+// Vorbereitung auf Mongoose 7
+mongoose.set("strictQuery", false);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Multer-Konfiguration für Bild-Uploads
+// Sicherstellen, dass das uploads-Verzeichnis existiert
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log("Uploads-Verzeichnis erstellt:", uploadsDir);
+}
+
+// Multer-Konfiguration für den Datei-Upload
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "uploads/");
@@ -21,77 +32,92 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
-// Schemas
+// Statischer Ordner für hochgeladene Dateien
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// MongoDB-Verbindung
+const MONGODB_URI = process.env.MONGODB_URI;
+console.log("MONGODB_URI:", MONGODB_URI);
+mongoose
+  .connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log("MongoDB connected successfully"))
+  .catch((err) => console.error("MongoDB connection error:", err));
+
+// Mongoose-Schemas
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  friends: { type: [String], default: [] },
-  points: { type: Number, default: 0 },
+  friends: [{ type: String }],
 });
-const User = mongoose.model("User", userSchema);
 
 const challengeSchema = new mongoose.Schema({
   title: { type: String, required: true },
   duration: { type: Number, required: true },
   startDate: { type: Date, required: true },
-  participants: { type: [String], default: [] },
+  participants: [{ type: String }],
+  creator: { type: String }, // Temporär ohne required, bis Datenbank bereinigt ist
   streaks: [
     {
       user: String,
-      days: { type: Number, default: 0 },
-      lastConfirmed: { type: [String], default: [] },
+      days: Number,
+      lastConfirmed: [Date],
     },
   ],
-  completed: { type: Boolean, default: false },
   messages: [
     {
       user: String,
       content: String,
-      timestamp: { type: Date, default: Date.now },
+      timestamp: Date,
     },
   ],
   images: [
     {
       user: String,
       path: String,
-      timestamp: { type: Date, default: Date.now },
-      day: { type: Number, default: 1 },
+      timestamp: Date,
+      day: Number,
+    },
+  ],
+  completed: { type: Boolean, default: false },
+  pokes: [
+    {
+      poker: String,
+      poked: String,
+      timestamp: Date,
     },
   ],
 });
-const Challenge = mongoose.model("Challenge", challengeSchema);
 
 const inviteSchema = new mongoose.Schema({
-  challengeId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Challenge",
-    required: false,
-  },
-  invitedBy: { type: String, required: true },
   invitedUser: { type: String, required: true },
-  status: { type: String, default: "pending" },
-  token: { type: String, unique: true },
+  challengeId: { type: mongoose.Schema.Types.ObjectId },
+  status: { type: String, required: true },
+  token: { type: String, required: true },
+  invitedBy: { type: String, required: true },
 });
+
+const User = mongoose.model("User", userSchema);
+const Challenge = mongoose.model("Challenge", challengeSchema);
 const Invite = mongoose.model("Invite", inviteSchema);
 
-const messageSchema = new mongoose.Schema({
-  fromUser: { type: String, required: true },
-  toUser: { type: String, required: true },
-  content: { type: String, required: true },
-  timestamp: { type: Date, default: Date.now },
-});
-const Message = mongoose.model("Message", messageSchema);
+// Middleware für statische Dateien (React Build)
+app.use(express.static(path.join(__dirname, "../build")));
 
 // API-Routen
 app.post("/register", async (req, res) => {
   const { username, password } = req.body;
-  const hashedPassword = await bcrypt.hash(password, 10);
   try {
-    const user = new User({ username, password: hashedPassword });
+    const existingUser = await User.findOne({ username });
+    if (existingUser)
+      return res.status(400).json({ error: "Benutzername existiert bereits" });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = new User({ username, password: hashedPassword, friends: [] });
     await user.save();
-    res.status(201).json({ message: "Benutzer erstellt" });
+    res.json({ message: "Registrierung erfolgreich" });
   } catch (err) {
-    res.status(400).json({ error: "Benutzername bereits vergeben" });
+    console.error("Fehler bei der Registrierung:", err);
+    res.status(500).json({ error: "Serverfehler bei der Registrierung" });
   }
 });
 
@@ -99,54 +125,16 @@ app.post("/login", async (req, res) => {
   const { username, password } = req.body;
   try {
     const user = await User.findOne({ username });
-    if (!user)
-      return res.status(400).json({ error: "Benutzer nicht gefunden" });
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ error: "Falsches Passwort" });
-    res.json({ message: "Login erfolgreich", username });
-  } catch (err) {
-    console.error("Fehler beim Login:", err);
-    res.status(500).json({ error: "Serverfehler beim Login" });
-  }
-});
+    if (!user) return res.status(400).json({ error: "Ungültige Anmeldedaten" });
 
-app.post("/add-friend", async (req, res) => {
-  const { username, friend } = req.body;
-  try {
-    const user = await User.findOne({ username });
-    if (!user)
-      return res.status(404).json({ error: "Benutzer nicht gefunden" });
-    if (user.friends.includes(friend))
-      return res.status(400).json({ error: "Freund bereits hinzugefügt" });
-    user.friends.push(friend);
-    await user.save();
-    res.json({ message: "Freund hinzugefügt" });
-  } catch (err) {
-    console.error("Fehler beim Hinzufügen eines Freundes:", err);
-    res
-      .status(500)
-      .json({ error: "Serverfehler beim Hinzufügen eines Freundes" });
-  }
-});
+    const match = await bcrypt.compare(password, user.password);
+    if (!match)
+      return res.status(400).json({ error: "Ungültige Anmeldedaten" });
 
-app.get("/friends", async (req, res) => {
-  const { username } = req.query;
-  try {
-    const user = await User.findOne({ username });
-    if (!user)
-      return res.status(404).json({ error: "Benutzer nicht gefunden" });
-    const friendRequests = await Invite.find({
-      invitedUser: username,
-      status: "pending",
-      challengeId: { $exists: false },
-    }).distinct("invitedBy");
-    res.json({
-      friends: user.friends,
-      friendRequests: friendRequests || [],
-    });
+    res.json({ message: "Anmeldung erfolgreich" });
   } catch (err) {
-    console.error("Fehler beim Abrufen der Freunde:", err);
-    res.status(500).json({ error: "Serverfehler beim Abrufen der Freunde" });
+    console.error("Fehler bei der Anmeldung:", err);
+    res.status(500).json({ error: "Serverfehler bei der Anmeldung" });
   }
 });
 
@@ -158,12 +146,11 @@ app.post("/create-challenge", async (req, res) => {
       duration,
       startDate,
       participants: [username],
+      creator: username,
       streaks: [{ user: username, days: 0, lastConfirmed: [] }],
-      messages: [],
-      images: [],
     });
     await challenge.save();
-    res.status(201).json({ message: "Challenge erstellt", challenge });
+    res.json({ message: "Challenge erfolgreich erstellt", challenge });
   } catch (err) {
     console.error("Fehler beim Erstellen der Challenge:", err);
     res
@@ -190,109 +177,47 @@ app.post("/confirm", async (req, res) => {
     if (!challenge)
       return res.status(404).json({ error: "Challenge nicht gefunden" });
 
-    const userStreak = challenge.streaks.find((s) => s.user === username) || {
-      days: 0,
-      lastConfirmed: [],
-    };
+    let userStreak = challenge.streaks.find((s) => s.user === username);
+    if (!userStreak) {
+      challenge.streaks.push({ user: username, days: 0, lastConfirmed: [] });
+      userStreak = challenge.streaks.find((s) => s.user === username);
+    }
+
     const today = new Date().toISOString().split("T")[0];
-    if (!userStreak.lastConfirmed.includes(today)) {
-      userStreak.lastConfirmed.push(today);
-      userStreak.days += 1;
+    const confirmedDates = Array.isArray(userStreak.lastConfirmed)
+      ? userStreak.lastConfirmed.map(
+          (date) => new Date(date).toISOString().split("T")[0]
+        )
+      : [];
+    if (confirmedDates.includes(today)) {
+      return res
+        .status(400)
+        .json({ error: "Du hast heute bereits bestätigt!" });
     }
 
-    const user = await User.findOne({ username });
-    let pointsToAdd = 10;
-    if (userStreak.days > 10) {
-      pointsToAdd += (userStreak.days - 10) * 10;
+    userStreak.lastConfirmed = userStreak.lastConfirmed || [];
+    userStreak.lastConfirmed.push(new Date());
+    userStreak.days = (userStreak.days || 0) + 1;
+
+    const startDate = new Date(challenge.startDate);
+    const currentDay =
+      Math.floor((new Date() - startDate) / (1000 * 60 * 60 * 24)) + 1;
+    if (currentDay >= challenge.duration) {
+      challenge.completed = true;
     }
-    user.points += pointsToAdd;
-    await user.save();
+
     await challenge.save();
 
+    const points = userStreak.days * 10;
     res.json({
-      message: "Challenge bestätigt!",
+      message: "Heute bestätigt!",
       days: userStreak.days,
+      points,
       completed: challenge.completed,
-      points: user.points,
     });
   } catch (err) {
-    console.error("Fehler beim Bestätigen der Challenge:", err);
-    res
-      .status(500)
-      .json({ error: "Serverfehler beim Bestätigen der Challenge" });
-  }
-});
-
-app.post("/send-invite", async (req, res) => {
-  const { challengeId, invitedBy, invitedUser } = req.body;
-  try {
-    const challenge = await Challenge.findById(challengeId);
-    if (!challenge)
-      return res.status(404).json({ error: "Challenge nicht gefunden" });
-
-    const invite = new Invite({
-      challengeId,
-      invitedBy,
-      invitedUser,
-      token: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-    });
-    await invite.save();
-    res.json({ message: "Einladung gesendet" });
-  } catch (err) {
-    console.error("Fehler beim Senden der Einladung:", err);
-    res.status(500).json({ error: "Serverfehler beim Senden der Einladung" });
-  }
-});
-
-app.get("/invites", async (req, res) => {
-  const { username } = req.query;
-  try {
-    const invites = await Invite.find({
-      invitedUser: username,
-      status: "pending",
-    }).populate("challengeId");
-    res.json(invites);
-  } catch (err) {
-    console.error("Fehler beim Abrufen der Einladungen:", err);
-    res
-      .status(500)
-      .json({ error: "Serverfehler beim Abrufen der Einladungen" });
-  }
-});
-
-app.post("/accept-invite", async (req, res) => {
-  const { inviteId, username } = req.body;
-  try {
-    const invite = await Invite.findById(inviteId);
-    if (!invite)
-      return res.status(404).json({ error: "Einladung nicht gefunden" });
-
-    const challenge = await Challenge.findById(invite.challengeId);
-    if (!challenge)
-      return res.status(404).json({ error: "Challenge nicht gefunden" });
-
-    challenge.participants.push(username);
-    challenge.streaks.push({ user: username, days: 0, lastConfirmed: [] });
-    invite.status = "accepted";
-    await challenge.save();
-    await invite.save();
-    res.json({ message: "Einladung angenommen" });
-  } catch (err) {
-    console.error("Fehler beim Annehmen der Einladung:", err);
-    res.status(500).json({ error: "Serverfehler beim Annehmen der Einladung" });
-  }
-});
-
-app.post("/poke", async (req, res) => {
-  const { username, friend, challengeId } = req.body;
-  try {
-    const challenge = await Challenge.findById(challengeId);
-    if (!challenge)
-      return res.status(404).json({ error: "Challenge nicht gefunden" });
-    res.json({ message: `${friend} wurde angestupst!` });
-  } catch (err) {
-    console.error("Fehler beim Anstupsen:", err);
-    res.status(500).json({ error: "Serverfehler beim Anstupsen" });
+    console.error("Fehler beim Bestätigen:", err);
+    res.status(500).json({ error: "Serverfehler beim Bestätigen" });
   }
 });
 
@@ -300,82 +225,79 @@ app.delete("/delete-challenge", async (req, res) => {
   const { challengeId, username } = req.body;
   try {
     const challenge = await Challenge.findById(challengeId);
-    if (!challenge) {
+    if (!challenge)
       return res.status(404).json({ error: "Challenge nicht gefunden" });
+
+    if (challenge.creator === username) {
+      await Challenge.deleteOne({ _id: challengeId });
+      res.json({ message: "Challenge erfolgreich gelöscht" });
+    } else {
+      challenge.participants = challenge.participants.filter(
+        (p) => p !== username
+      );
+      challenge.streaks = challenge.streaks.filter((s) => s.user !== username);
+      challenge.pokes = challenge.pokes?.filter(
+        (poke) => poke.poker !== username && poke.poked !== username
+      );
+      challenge.messages = challenge.messages?.filter(
+        (msg) => msg.user !== username
+      );
+      challenge.images = challenge.images?.filter(
+        (img) => img.user !== username
+      );
+
+      if (challenge.participants.length === 0) {
+        await Challenge.deleteOne({ _id: challengeId });
+        res.json({
+          message:
+            "Challenge gelöscht, da keine Teilnehmer mehr vorhanden sind",
+        });
+      } else {
+        await challenge.save();
+        res.json({ message: "Du hast die Challenge verlassen" });
+      }
     }
-    if (!challenge.participants.includes(username)) {
-      return res
-        .status(403)
-        .json({ error: "Du bist nicht Teilnehmer dieser Challenge" });
-    }
-    await Challenge.deleteOne({ _id: challengeId });
-    res.json({ message: "Challenge erfolgreich gelöscht" });
   } catch (err) {
     console.error("Fehler beim Löschen der Challenge:", err);
     res.status(500).json({ error: "Serverfehler beim Löschen der Challenge" });
   }
 });
 
-app.get("/notifications", async (req, res) => {
-  const { username } = req.query;
-  try {
-    const invites = await Invite.find({
-      invitedUser: username,
-      status: "pending",
-    }).populate("challengeId");
-    const notifications = invites.map((invite) => ({
-      id: invite._id,
-      type: "invite",
-      message: invite.challengeId
-        ? `${invite.invitedBy} hat dich zu "${invite.challengeId.title}" eingeladen!`
-        : `${invite.invitedBy} hat dir eine Freundschaftsanfrage gesendet!`,
-      challengeId: invite.challengeId ? invite.challengeId._id : null,
-      invitedBy: invite.invitedBy,
-    }));
-    res.json(notifications);
-  } catch (err) {
-    console.error("Fehler beim Abrufen der Benachrichtigungen:", err);
-    res
-      .status(500)
-      .json({ error: "Fehler beim Abrufen der Benachrichtigungen" });
-  }
-});
-
 app.post("/send-friend-request", async (req, res) => {
   const { fromUser, toUser } = req.body;
   try {
-    console.log("Sending friend request from:", fromUser, "to:", toUser);
-    const user = await User.findOne({ username: fromUser });
-    if (!user) return res.json({ message: "Benutzer nicht gefunden" });
-    const targetUser = await User.findOne({ username: toUser });
-    if (!targetUser)
-      return res.json({ message: "Ziel-Benutzer nicht gefunden" });
-    if (user.friends.includes(toUser))
-      return res.json({ message: "Dieser Benutzer ist bereits dein Freund!" });
+    const fromUserExists = await User.findOne({ username: fromUser });
+    const toUserExists = await User.findOne({ username: toUser });
+    if (!fromUserExists || !toUserExists) {
+      return res.status(404).json({ error: "Benutzer nicht gefunden" });
+    }
+
+    if (fromUserExists.friends.includes(toUser)) {
+      return res.status(400).json({ error: "Ihr seid bereits Freunde" });
+    }
 
     const existingInvite = await Invite.findOne({
-      invitedBy: fromUser,
       invitedUser: toUser,
+      invitedBy: fromUser,
       status: "pending",
-      challengeId: { $exists: false },
     });
-    if (existingInvite)
-      return res.json({ message: "Anfrage bereits gesendet" });
+    if (existingInvite) {
+      return res
+        .status(400)
+        .json({ error: "Freundschaftsanfrage bereits gesendet" });
+    }
 
     const invite = new Invite({
-      invitedBy: fromUser,
       invitedUser: toUser,
+      status: "pending",
       token: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      invitedBy: fromUser,
     });
     await invite.save();
-    console.log("Friend request saved:", invite._id);
-    res.json({ message: "Freundschaftsanfrage gesendet" });
+
+    res.json({ message: `Freundschaftsanfrage an ${toUser} gesendet!` });
   } catch (err) {
-    console.error(
-      "Fehler beim Senden der Freundschaftsanfrage:",
-      err.message,
-      err.stack
-    );
+    console.error("Fehler beim Senden der Freundschaftsanfrage:", err);
     res
       .status(500)
       .json({ error: "Serverfehler beim Senden der Freundschaftsanfrage" });
@@ -386,82 +308,163 @@ app.post("/accept-friend-request", async (req, res) => {
   const { username, friend } = req.body;
   try {
     const invite = await Invite.findOne({
-      invitedBy: friend,
       invitedUser: username,
+      invitedBy: friend,
       status: "pending",
-      challengeId: { $exists: false },
     });
     if (!invite)
-      return res
-        .status(404)
-        .json({ error: "Freundschaftsanfrage nicht gefunden" });
+      return res.status(404).json({ error: "Einladung nicht gefunden" });
 
+    invite.status = "accepted";
+    await invite.save();
+
+    await User.updateOne({ username }, { $addToSet: { friends: friend } });
+    await User.updateOne(
+      { username: friend },
+      { $addToSet: { friends: username } }
+    );
+
+    res.json({ message: `Freundschaft mit ${friend} akzeptiert!` });
+  } catch (err) {
+    console.error("Fehler beim Akzeptieren der Freundschaftsanfrage:", err);
+    res
+      .status(500)
+      .json({
+        error: "Serverfehler beim Akzeptieren der Freundschaftsanfrage",
+      });
+  }
+});
+
+app.post("/decline-friend-request", async (req, res) => {
+  const { username, friend } = req.body;
+  try {
+    const invite = await Invite.findOne({
+      invitedUser: username,
+      invitedBy: friend,
+      status: "pending",
+    });
+    if (!invite)
+      return res.status(404).json({ error: "Einladung nicht gefunden" });
+
+    invite.status = "declined";
+    await invite.save();
+
+    res.json({ message: `Freundschaftsanfrage von ${friend} abgelehnt` });
+  } catch (err) {
+    console.error("Fehler beim Ablehnen der Freundschaftsanfrage:", err);
+    res
+      .status(500)
+      .json({ error: "Serverfehler beim Ablehnen der Freundschaftsanfrage" });
+  }
+});
+
+app.get("/friends", async (req, res) => {
+  const { username } = req.query;
+  try {
     const user = await User.findOne({ username });
     if (!user)
       return res.status(404).json({ error: "Benutzer nicht gefunden" });
-    const friendUser = await User.findOne({ username: friend });
-    if (!friendUser)
-      return res.status(404).json({ error: "Freund nicht gefunden" });
 
-    user.friends.push(friend);
-    friendUser.friends.push(username);
-    invite.status = "accepted";
-    await user.save();
-    await friendUser.save();
-    await invite.save();
+    const invites = await Invite.find({
+      invitedUser: username,
+      status: "pending",
+    });
+    const friendRequests = invites
+      .filter((invite) => !invite.challengeId)
+      .map((invite) => invite.invitedBy);
 
-    res.json({ message: "Freundschaftsanfrage angenommen" });
+    res.json({ friends: user.friends, friendRequests });
   } catch (err) {
-    console.error("Fehler beim Annehmen der Freundschaftsanfrage:", err);
-    res
-      .status(500)
-      .json({ error: "Serverfehler beim Annehmen der Freundschaftsanfrage" });
+    console.error("Fehler beim Abrufen der Freunde:", err);
+    res.status(500).json({ error: "Serverfehler beim Abrufen der Freunde" });
   }
 });
 
-app.post("/get-invite-id", async (req, res) => {
-  const { invitedBy, invitedUser, challengeTitle } = req.body;
+app.post("/send-invite", async (req, res) => {
+  const { challengeId, invitedBy, invitedUser } = req.body;
   try {
-    let invite;
-    if (challengeTitle) {
-      const challenge = await Challenge.findOne({ title: challengeTitle });
-      if (!challenge)
-        return res.status(404).json({ error: "Challenge nicht gefunden" });
-      invite = await Invite.findOne({
-        invitedBy,
-        invitedUser,
-        challengeId: challenge._id,
-        status: "pending",
-      });
-    } else {
-      invite = await Invite.findOne({
-        invitedBy,
-        invitedUser,
-        challengeId: { $exists: false },
-        status: "pending",
-      });
+    const challenge = await Challenge.findById(challengeId);
+    if (!challenge)
+      return res.status(404).json({ error: "Challenge nicht gefunden" });
+
+    const invitedUserExists = await User.findOne({ username: invitedUser });
+    if (!invitedUserExists)
+      return res.status(404).json({ error: "Benutzer nicht gefunden" });
+
+    if (challenge.participants.includes(invitedUser)) {
+      return res.status(400).json({ error: "Benutzer ist bereits Teilnehmer" });
     }
-    if (!invite)
-      return res.status(404).json({ error: "Einladung nicht gefunden" });
-    res.json({ inviteId: invite._id });
+
+    const existingInvite = await Invite.findOne({
+      invitedUser,
+      challengeId,
+      status: "pending",
+    });
+    if (existingInvite) {
+      return res.status(400).json({ error: "Einladung bereits gesendet" });
+    }
+
+    const invite = new Invite({
+      invitedUser,
+      challengeId,
+      status: "pending",
+      token: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      invitedBy,
+    });
+    await invite.save();
+
+    res.json({ message: `Einladung an ${invitedUser} gesendet!` });
   } catch (err) {
-    console.error("Fehler beim Abrufen der Einladungs-ID:", err);
-    res
-      .status(500)
-      .json({ error: "Serverfehler beim Abrufen der Einladungs-ID" });
+    console.error("Fehler beim Senden der Einladung:", err);
+    res.status(500).json({ error: "Serverfehler beim Senden der Einladung" });
   }
 });
 
-app.post("/reject-invite", async (req, res) => {
-  const { inviteId, username } = req.body;
+app.post("/accept-invite", async (req, res) => {
+  const { username, challengeId } = req.body;
   try {
-    const invite = await Invite.findById(inviteId);
+    const invite = await Invite.findOne({
+      invitedUser: username,
+      challengeId,
+      status: "pending",
+    });
     if (!invite)
       return res.status(404).json({ error: "Einladung nicht gefunden" });
-    if (invite.invitedUser !== username)
-      return res.status(403).json({ error: "Nicht autorisiert" });
-    invite.status = "rejected";
+
+    const challenge = await Challenge.findById(challengeId);
+    if (!challenge)
+      return res.status(404).json({ error: "Challenge nicht gefunden" });
+
+    challenge.participants.push(username);
+    challenge.streaks.push({ user: username, days: 0, lastConfirmed: [] });
+    await challenge.save();
+
+    invite.status = "accepted";
     await invite.save();
+
+    res.json({ message: "Einladung angenommen!" });
+  } catch (err) {
+    console.error("Fehler beim Akzeptieren der Einladung:", err);
+    res
+      .status(500)
+      .json({ error: "Serverfehler beim Akzeptieren der Einladung" });
+  }
+});
+
+app.post("/decline-invite", async (req, res) => {
+  const { username, challengeId } = req.body;
+  try {
+    const invite = await Invite.findOne({
+      invitedUser: username,
+      challengeId,
+      status: "pending",
+    });
+    if (!invite)
+      return res.status(404).json({ error: "Einladung nicht gefunden" });
+
+    invite.status = "declined";
+    await invite.save();
+
     res.json({ message: "Einladung abgelehnt" });
   } catch (err) {
     console.error("Fehler beim Ablehnen der Einladung:", err);
@@ -469,33 +472,185 @@ app.post("/reject-invite", async (req, res) => {
   }
 });
 
-app.post("/send-message", async (req, res) => {
-  const { fromUser, toUser, content } = req.body;
+app.get("/notifications", async (req, res) => {
+  const { username } = req.query;
   try {
-    const message = new Message({ fromUser, toUser, content });
-    await message.save();
-    res.json({ message: "Nachricht gesendet", messageId: message._id });
+    const invites = await Invite.find({
+      invitedUser: username,
+      status: "pending",
+    });
+    const notifications = invites.map((invite) => {
+      if (invite.challengeId) {
+        return {
+          type: "invite",
+          message: `${invite.invitedBy} hat dich zu einer Challenge eingeladen!`,
+          challengeId: invite.challengeId,
+          seen: false,
+        };
+      } else {
+        return {
+          type: "friend_request",
+          message: `${invite.invitedBy} möchte dein Freund sein!`,
+          friend: invite.invitedBy,
+          seen: false,
+        };
+      }
+    });
+
+    const challenges = await Challenge.find({ participants: username });
+    const missedDayNotifications = [];
+    for (const challenge of challenges) {
+      const userStreak = challenge.streaks.find((s) => s.user === username) || {
+        days: 0,
+        lastConfirmed: [],
+      };
+      const today = new Date().toISOString().split("T")[0];
+      const confirmedDates = Array.isArray(userStreak.lastConfirmed)
+        ? userStreak.lastConfirmed.map(
+            (date) => new Date(date).toISOString().split("T")[0]
+          )
+        : [];
+      const hasConfirmedToday = confirmedDates.includes(today);
+
+      if (!hasConfirmedToday && !challenge.completed) {
+        const startDate = new Date(challenge.startDate);
+        const currentDay =
+          Math.floor((new Date() - startDate) / (1000 * 60 * 60 * 24)) + 1;
+        if (currentDay <= challenge.duration) {
+          missedDayNotifications.push({
+            type: "missed_day",
+            message: `Du hast Tag ${currentDay} in "${challenge.title}" verpasst!`,
+            challengeId: challenge._id,
+            seen: false,
+          });
+        }
+      }
+    }
+
+    res.json([...notifications, ...missedDayNotifications]);
   } catch (err) {
-    console.error("Fehler beim Senden der Nachricht:", err);
-    res.status(500).json({ error: "Serverfehler beim Senden der Nachricht" });
+    console.error("Fehler beim Abrufen der Benachrichtigungen:", err);
+    res
+      .status(500)
+      .json({ error: "Serverfehler beim Abrufen der Benachrichtigungen" });
   }
 });
 
-app.get("/messages", async (req, res) => {
-  const { user1, user2 } = req.query;
+app.post("/notify-missed-day", async (req, res) => {
+  const { username, challengeId } = req.body;
   try {
-    const messages = await Message.find({
-      $or: [
-        { fromUser: user1, toUser: user2 },
-        { fromUser: user2, toUser: user1 },
-      ],
-    }).sort({ timestamp: 1 });
-    res.json(messages);
+    const challenge = await Challenge.findById(challengeId);
+    if (!challenge)
+      return res.status(404).json({ error: "Challenge nicht gefunden" });
+
+    const userStreak = challenge.streaks.find((s) => s.user === username) || {
+      days: 0,
+      lastConfirmed: [],
+    };
+    const today = new Date().toISOString().split("T")[0];
+    const confirmedDates = Array.isArray(userStreak.lastConfirmed)
+      ? userStreak.lastConfirmed.map(
+          (date) => new Date(date).toISOString().split("T")[0]
+        )
+      : [];
+    const hasConfirmedToday = confirmedDates.includes(today);
+
+    if (!hasConfirmedToday && !challenge.completed) {
+      const startDate = new Date(challenge.startDate);
+      const currentDay =
+        Math.floor((new Date() - startDate) / (1000 * 60 * 60 * 24)) + 1;
+      if (currentDay <= challenge.duration) {
+        const notification = {
+          id: new mongoose.Types.ObjectId(),
+          type: "missed_day",
+          message: `Du hast Tag ${currentDay} in "${challenge.title}" verpasst!`,
+          challengeId,
+        };
+        const existingInvite = await Invite.findOne({
+          invitedUser: username,
+          challengeId,
+          status: "pending",
+        });
+        if (!existingInvite) {
+          const invite = new Invite({
+            invitedUser: username,
+            challengeId,
+            status: "pending",
+            token:
+              Date.now().toString() + Math.random().toString(36).substr(2, 9),
+            invitedBy: username,
+          });
+          await invite.save();
+        }
+        return res.json({ notification });
+      }
+    }
+    res.json({ message: "Kein verpasster Tag" });
   } catch (err) {
-    console.error("Fehler beim Abrufen der Nachrichten:", err);
+    console.error("Fehler beim Überprüfen des verpassten Tages:", err);
     res
       .status(500)
-      .json({ error: "Serverfehler beim Abrufen der Nachrichten" });
+      .json({ error: "Serverfehler beim Überprüfen des verpassten Tages" });
+  }
+});
+
+app.post("/poke", async (req, res) => {
+  const { username, friend, challengeId } = req.body;
+  try {
+    const challenge = await Challenge.findById(challengeId);
+    if (!challenge)
+      return res.status(404).json({ error: "Challenge nicht gefunden" });
+
+    // Sicherstellen, dass `creator` gesetzt ist
+    if (!challenge.creator) {
+      challenge.creator = challenge.participants[0] || username; // Fallback auf den ersten Teilnehmer oder den aktuellen Benutzer
+    }
+
+    const userStreak = challenge.streaks.find((s) => s.user === username) || {
+      days: 0,
+      lastConfirmed: [],
+    };
+    const friendStreak = challenge.streaks.find((s) => s.user === friend) || {
+      days: 0,
+      lastConfirmed: [],
+    };
+    const today = new Date().toISOString().split("T")[0];
+    const userConfirmedDates = Array.isArray(userStreak.lastConfirmed)
+      ? userStreak.lastConfirmed.map(
+          (date) => new Date(date).toISOString().split("T")[0]
+        )
+      : [];
+    const friendConfirmedDates = Array.isArray(friendStreak.lastConfirmed)
+      ? friendStreak.lastConfirmed.map(
+          (date) => new Date(date).toISOString().split("T")[0]
+        )
+      : [];
+    const userHasConfirmedToday = userConfirmedDates.includes(today);
+    const friendHasConfirmedToday = friendConfirmedDates.includes(today);
+
+    if (!userHasConfirmedToday) {
+      return res
+        .status(403)
+        .json({ error: "Du musst heute bestätigen, um zu anstupsen!" });
+    }
+    if (friendHasConfirmedToday) {
+      return res
+        .status(403)
+        .json({ error: "Der Freund hat heute bereits bestätigt!" });
+    }
+
+    challenge.pokes = challenge.pokes || [];
+    challenge.pokes.push({
+      poker: username,
+      poked: friend,
+      timestamp: new Date(),
+    });
+    await challenge.save();
+
+    res.json({ message: `${friend} wurde angestupst!` });
+  } catch (err) {
+    console.error("Fehler beim Anstupsen:", err);
+    res.status(500).json({ error: "Serverfehler beim Anstupsen" });
   }
 });
 
@@ -505,14 +660,19 @@ app.post("/send-challenge-message", async (req, res) => {
     const challenge = await Challenge.findById(challengeId);
     if (!challenge)
       return res.status(404).json({ error: "Challenge nicht gefunden" });
-    challenge.messages.push({ user, content });
+
+    challenge.messages = challenge.messages || [];
+    challenge.messages.push({
+      user,
+      content,
+      timestamp: new Date(),
+    });
     await challenge.save();
-    res.json({ message: "Nachricht gesendet" });
+
+    res.json({ message: "Nachricht gesendet!" });
   } catch (err) {
-    console.error("Fehler beim Senden der Challenge-Nachricht:", err);
-    res
-      .status(500)
-      .json({ error: "Serverfehler beim Senden der Challenge-Nachricht" });
+    console.error("Fehler beim Senden der Nachricht:", err);
+    res.status(500).json({ error: "Serverfehler beim Senden der Nachricht" });
   }
 });
 
@@ -522,12 +682,12 @@ app.get("/challenge-messages", async (req, res) => {
     const challenge = await Challenge.findById(challengeId);
     if (!challenge)
       return res.status(404).json({ error: "Challenge nicht gefunden" });
-    res.json(challenge.messages);
+    res.json(challenge.messages || []);
   } catch (err) {
-    console.error("Fehler beim Abrufen der Challenge-Nachrichten:", err);
+    console.error("Fehler beim Abrufen der Nachrichten:", err);
     res
       .status(500)
-      .json({ error: "Serverfehler beim Abrufen der Challenge-Nachrichten" });
+      .json({ error: "Serverfehler beim Abrufen der Nachrichten" });
   }
 });
 
@@ -551,13 +711,22 @@ app.post(
           .status(400)
           .json({ error: "Bildgröße darf maximal 5 MB betragen!" });
 
-      const imagePath = req.file.path;
+      const imagePath = req.file.filename;
+      const fullPath = path.join(__dirname, "uploads", imagePath);
+
+      // Überprüfen, ob die Datei tatsächlich existiert
+      if (!fs.existsSync(fullPath)) {
+        return res
+          .status(500)
+          .json({ error: "Fehler beim Speichern der Datei" });
+      }
+
       challenge.images = challenge.images || [];
       challenge.images.push({
         user: username,
         path: imagePath,
         timestamp: Date.now(),
-        day: parseInt(day) || 1, // Standard-Tag 1, falls kein Tag angegeben
+        day: parseInt(day) || 1,
       });
       await challenge.save();
       res.json({ message: "Bild erfolgreich hochgeladen", imagePath });
@@ -581,89 +750,12 @@ app.get("/challenge-images", async (req, res) => {
   }
 });
 
-app.post("/notify-missed-day", async (req, res) => {
-  const { username, challengeId } = req.body;
-  try {
-    const challenge = await Challenge.findById(challengeId);
-    if (!challenge)
-      return res.status(404).json({ error: "Challenge nicht gefunden" });
-
-    const userStreak = challenge.streaks.find((s) => s.user === username) || {
-      days: 0,
-      lastConfirmed: [],
-    };
-    const today = new Date().toISOString().split("T")[0];
-    const confirmedDates = Array.isArray(userStreak.lastConfirmed)
-      ? userStreak.lastConfirmed.map(
-          (date) => new Date(date).toISOString().split("T")[0]
-        )
-      : userStreak.lastConfirmed
-      ? [new Date(userStreak.lastConfirmed).toISOString().split("T")[0]]
-      : [];
-    const hasConfirmedToday = confirmedDates.includes(today);
-
-    if (!hasConfirmedToday && !challenge.completed) {
-      const startDate = new Date(challenge.startDate);
-      const currentDay =
-        Math.floor((new Date() - startDate) / (1000 * 60 * 60 * 24)) + 1;
-      if (currentDay <= challenge.duration) {
-        const notification = {
-          id: new mongoose.Types.ObjectId(),
-          type: "missed_day",
-          message: `Du hast Tag ${currentDay} in "${challenge.title}" verpasst!`,
-          challengeId,
-        };
-        const existingInvite = await Invite.findOne({
-          invitedUser: username,
-          challengeId,
-          status: "pending",
-        });
-        if (!existingInvite) {
-          const invite = new Invite({
-            invitedUser: username, // Der Benutzer, der benachrichtigt wird
-            challengeId,
-            status: "pending",
-            token:
-              Date.now().toString() + Math.random().toString(36).substr(2, 9),
-            invitedBy: username, // Füge den aktuellen Benutzer als invitedBy hinzu
-          });
-          await invite.save();
-        }
-        res.json({ notification });
-      } else {
-        res.json({ message: "Kein verpasster Tag" });
-      }
-    } else {
-      res.json({ message: "Kein verpasster Tag" });
-    }
-  } catch (err) {
-    console.error("Fehler beim Überprüfen des verpassten Tages:", err);
-    res
-      .status(500)
-      .json({ error: "Serverfehler beim Überprüfen des verpassten Tages" });
-  }
-});
-
-// Statische Dateien und Fallback
-app.use(express.static(path.join(__dirname, "../build")));
-app.use("/uploads", express.static("uploads")); // Statischer Zugriff auf Uploads
 app.get("*", (req, res) => {
-  console.log("Fallback route hit:", req.url);
+  console.log("Fallback route hit:", req.originalUrl);
   res.sendFile(path.join(__dirname, "../build", "index.html"));
 });
 
-// MongoDB-Verbindung
-mongoose.set("strictQuery", false);
-console.log("MONGODB_URI:", process.env.MONGODB_URI);
-mongoose
-  .connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log("MongoDB connected successfully"))
-  .catch((err) =>
-    console.error("MongoDB connection error:", err.message, err.stack)
-  );
-
-// Server starten
-app.listen(3000, "0.0.0.0", () => console.log("Server läuft auf Port 3000"));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server läuft auf Port ${PORT}`);
+});

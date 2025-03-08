@@ -36,7 +36,7 @@ const ChallengeCard = ({
         );
     };
     fetchChatMessages();
-    const interval = setInterval(fetchChatMessages, 5000);
+    const interval = setInterval(fetchChatMessages, 30000); // 30 Sekunden
     return () => clearInterval(interval);
   }, [challenge._id, setMessage]);
 
@@ -50,7 +50,7 @@ const ChallengeCard = ({
         );
     };
     fetchImages();
-    const interval = setInterval(fetchImages, 5000);
+    const interval = setInterval(fetchImages, 30000); // 30 Sekunden
     return () => clearInterval(interval);
   }, [challenge._id, setMessage]);
 
@@ -67,8 +67,6 @@ const ChallengeCard = ({
         ? userStreak.lastConfirmed.map(
             (date) => new Date(date).toISOString().split("T")[0]
           )
-        : userStreak.lastConfirmed
-        ? [new Date(userStreak.lastConfirmed).toISOString().split("T")[0]]
         : [];
       const hasConfirmedToday = confirmedDates.includes(today);
 
@@ -79,7 +77,7 @@ const ChallengeCard = ({
       }
     };
     checkMotivation();
-    const interval = setInterval(checkMotivation, 60000);
+    const interval = setInterval(checkMotivation, 60000); // 1 Minute
     return () => clearInterval(interval);
   }, [challenge, username]);
 
@@ -165,34 +163,47 @@ const ChallengeCard = ({
       .then((res) => res.json())
       .then((data) => {
         setMessage(data.message || data.error);
+        fetchChallenges();
       })
       .catch((err) => setMessage("Fehler beim Anstupsen: " + err.message));
   };
 
   const deleteChallenge = () => {
-    if (window.confirm("Möchtest du diese Challenge wirklich löschen?")) {
-      fetch("/delete-challenge", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ challengeId: challenge._id, username }),
-      })
-        .then((res) => {
-          if (!res.ok) {
-            return res.text().then((text) => {
-              throw new Error(`HTTP-Fehler: ${res.status} - ${text}`);
+    fetch(`/challenges?username=${encodeURIComponent(username)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        const challengeData = data.find((ch) => ch._id === challenge._id);
+        const isCreator = challengeData.creator === username;
+        const confirmMessage = isCreator
+          ? "Möchtest du diese Challenge wirklich löschen?"
+          : "Möchtest du dich aus dieser Challenge entfernen?";
+        if (window.confirm(confirmMessage)) {
+          fetch("/delete-challenge", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ challengeId: challenge._id, username }),
+          })
+            .then((res) => {
+              if (!res.ok) {
+                return res.text().then((text) => {
+                  throw new Error(`HTTP-Fehler: ${res.status} - ${text}`);
+                });
+              }
+              return res.json();
+            })
+            .then((data) => {
+              setMessage(data.message || data.error);
+              fetchChallenges();
+            })
+            .catch((err) => {
+              console.error("Fehler beim Löschen:", err);
+              setMessage("Fehler beim Löschen der Challenge: " + err.message);
             });
-          }
-          return res.json();
-        })
-        .then((data) => {
-          setMessage(data.message || data.error);
-          fetchChallenges();
-        })
-        .catch((err) => {
-          console.error("Fehler beim Löschen:", err);
-          setMessage("Fehler beim Löschen der Challenge: " + err.message);
-        });
-    }
+        }
+      })
+      .catch((err) => {
+        setMessage("Fehler beim Abrufen der Challenge-Daten: " + err.message);
+      });
   };
 
   const getProgress = () => {
@@ -206,8 +217,6 @@ const ChallengeCard = ({
       ? userStreak.lastConfirmed.map(
           (date) => new Date(date).toISOString().split("T")[0]
         )
-      : userStreak.lastConfirmed
-      ? [new Date(userStreak.lastConfirmed).toISOString().split("T")[0]]
       : [];
     const confirmedDays = userStreak.days;
 
@@ -242,8 +251,6 @@ const ChallengeCard = ({
     ? userStreak.lastConfirmed.map(
         (date) => new Date(date).toISOString().split("T")[0]
       )
-    : userStreak.lastConfirmed
-    ? [new Date(userStreak.lastConfirmed).toISOString().split("T")[0]]
     : [];
   const userHasConfirmedToday = confirmedDates.includes(today);
 
@@ -500,7 +507,7 @@ const ChallengeCard = ({
             onClick={(e) => e.stopPropagation()}
           >
             <img
-              src={`/uploads/${selectedImage.path.split("/").pop()}`}
+              src={`/uploads/${selectedImage.path}`}
               alt={`Upload von ${selectedImage.user}`}
               className="w-full h-auto max-h-96 object-contain mb-4 rounded-lg"
             />
@@ -537,8 +544,6 @@ const ChallengeCard = ({
             ? streak.lastConfirmed.map(
                 (date) => new Date(date).toISOString().split("T")[0]
               )
-            : streak.lastConfirmed
-            ? [new Date(streak.lastConfirmed).toISOString().split("T")[0]]
             : [];
           const hasConfirmedToday = confirmedDates.includes(today);
           const canPoke =
@@ -546,6 +551,9 @@ const ChallengeCard = ({
             !hasConfirmedToday &&
             participant !== username &&
             friends.includes(participant);
+          const hasPoked = challenge.pokes?.some(
+            (poke) => poke.poker === username && poke.poked === participant
+          );
 
           return (
             <div
@@ -557,7 +565,7 @@ const ChallengeCard = ({
                 <span className="text-yellow-500 font-bold text-lg">
                   🔥 {streak.days}
                 </span>
-                {canPoke && (
+                {canPoke && !hasPoked && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -584,14 +592,15 @@ const ChallengeCard = ({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              completeToday(challenge._id);
+              if (!userHasConfirmedToday) completeToday(challenge._id);
+              else setMessage("Du hast heute bereits bestätigt!");
             }}
             className={`px-6 py-3 rounded-full shadow-lg transition-all duration-300 z-0 ${
               challenge.completed
                 ? "bg-gray-400 cursor-not-allowed"
                 : "bg-yellow-500 text-white hover:bg-green-600 hover:text-white"
             }`}
-            disabled={challenge.completed}
+            disabled={challenge.completed || userHasConfirmedToday}
           >
             {challenge.completed ? "🎉 Erledigt!" : "🎯"}
           </button>

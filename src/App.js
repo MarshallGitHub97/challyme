@@ -26,74 +26,84 @@ const App = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [points, setPoints] = useState(0);
   const [activeTab, setActiveTab] = useState("challenges");
+  const [isNotificationsVisible, setIsNotificationsVisible] = useState(false);
 
-  const fetchChallenges = () => {
+  // Initiales Laden der Daten nur bei Login
+  useEffect(() => {
+    if (isLoggedIn && username) {
+      const loadData = async () => {
+        setIsLoading(true);
+        try {
+          await Promise.all([
+            fetchChallenges(),
+            fetchFriends(),
+            fetchNotifications(),
+          ]);
+        } catch (err) {
+          setMessage(`Fehler beim Laden der Daten: ${err.message}`);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      loadData();
+    }
+  }, [isLoggedIn, username]); // Nur bei Login/Username-Änderung ausführen
+
+  const fetchChallenges = async () => {
     setIsLoading(true);
-    fetch(`/challenges?username=${encodeURIComponent(username)}`)
-      .then((res) => {
-        if (!res.ok) {
-          console.error("Fetch challenges failed with status:", res.status);
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then((data) => {
-        console.log("Challenges data:", data);
-        setChallenges(data || []);
-      })
-      .catch((err) => {
-        console.error("Error fetching challenges:", err.message);
-        setMessage(
-          "Error fetching challenges. Check server logs: " + err.message
-        );
-      })
-      .finally(() => setIsLoading(false));
+    try {
+      const res = await fetch(
+        `/challenges?username=${encodeURIComponent(username)}`
+      );
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      console.log("Challenges data:", data);
+      setChallenges(data || []);
+    } catch (err) {
+      console.error("Error fetching challenges:", err.message);
+      setMessage(
+        "Error fetching challenges. Check server logs: " + err.message
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const fetchFriends = () => {
+  const fetchFriends = async () => {
     if (!username) return;
-    fetch(`/friends?username=${encodeURIComponent(username)}`)
-      .then((res) => {
-        if (!res.ok) {
-          console.error("Fetch friends failed with status:", res.status);
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then((data) => {
-        console.log("Friends data:", data);
-        setFriends(data.friends || []);
-        setFriendRequests(data.friendRequests || []);
-      })
-      .catch((err) => {
-        console.error("Error fetching friends:", err.message);
-        setMessage("Error fetching friends. Check server logs: " + err.message);
-      });
+    try {
+      const res = await fetch(
+        `/friends?username=${encodeURIComponent(username)}`
+      );
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      console.log("Friends data:", data);
+      setFriends(data.friends || []);
+      setFriendRequests(data.friendRequests || []);
+    } catch (err) {
+      console.error("Error fetching friends:", err.message);
+      setMessage("Error fetching friends. Check server logs: " + err.message);
+    }
   };
 
-  const fetchNotifications = () => {
+  const fetchNotifications = async () => {
     if (!username) return;
-    fetch(`/notifications?username=${encodeURIComponent(username)}`)
-      .then((res) => {
-        if (!res.ok) {
-          console.error("Fetch notifications failed with status:", res.status);
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then((data) => {
-        console.log("Notifications data:", data);
-        setNotifications(data || []);
-      })
-      .catch((err) => {
-        console.error("Error fetching notifications:", err.message);
-        setMessage(
-          "Error fetching notifications. Check server logs: " + err.message
-        );
-      });
+    try {
+      const res = await fetch(
+        `/notifications?username=${encodeURIComponent(username)}`
+      );
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      console.log("Notifications data:", data);
+      setNotifications(data || []);
+    } catch (err) {
+      console.error("Error fetching notifications:", err.message);
+      setMessage(
+        "Error fetching notifications. Check server logs: " + err.message
+      );
+    }
   };
 
-  // Berechne den höchsten Streak für die Punkte-Karte
   const getHighestStreak = () => {
     let highestStreak = 0;
     let hasMissedDay = false;
@@ -108,8 +118,6 @@ const App = () => {
         ? userStreak.lastConfirmed.map(
             (date) => new Date(date).toISOString().split("T")[0]
           )
-        : userStreak.lastConfirmed
-        ? [new Date(userStreak.lastConfirmed).toISOString().split("T")[0]]
         : [];
       const hasConfirmedToday = confirmedDates.includes(today);
 
@@ -134,77 +142,12 @@ const App = () => {
 
   const { highestStreak, hasMissedDay } = getHighestStreak();
 
-  // Bestimme das Symbol basierend auf dem Streak
   const getStreakSymbol = () => {
-    if (hasMissedDay) return "😢"; // Traurig, wenn ein Tag verpasst wurde
-    if (highestStreak > 5) return "🚀"; // Rakete für sehr gute Streaks
-    if (highestStreak > 0) return "😊"; // Happy Smiley für normale Streaks
-    return "😢"; // Traurig, wenn kein Streak
+    if (hasMissedDay) return "😢";
+    if (highestStreak > 5) return "🚀";
+    if (highestStreak > 0) return "😊";
+    return "😢";
   };
-
-  useEffect(() => {
-    if (isLoggedIn && username) {
-      const loadData = async () => {
-        setIsLoading(true);
-        try {
-          await Promise.all([
-            fetchChallenges(),
-            fetchFriends(),
-            fetchNotifications(),
-          ]);
-          // Check für verpasste Tage nur einmal beim Laden
-          challenges.forEach((challenge) => {
-            const userStreak = challenge.streaks.find(
-              (s) => s.user === username
-            ) || {
-              days: 0,
-              lastConfirmed: [],
-            };
-            const today = new Date().toISOString().split("T")[0];
-            const confirmedDates = Array.isArray(userStreak.lastConfirmed)
-              ? userStreak.lastConfirmed.map(
-                  (date) => new Date(date).toISOString().split("T")[0]
-                )
-              : userStreak.lastConfirmed
-              ? [new Date(userStreak.lastConfirmed).toISOString().split("T")[0]]
-              : [];
-            const hasConfirmedToday = confirmedDates.includes(today);
-
-            if (!hasConfirmedToday && !challenge.completed) {
-              const startDate = new Date(challenge.startDate);
-              const currentDay =
-                Math.floor((new Date() - startDate) / (1000 * 60 * 60 * 24)) +
-                1;
-              if (currentDay <= challenge.duration) {
-                fetch("/notify-missed-day", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    username,
-                    challengeId: challenge._id,
-                  }),
-                })
-                  .then((res) => res.json())
-                  .then((data) => {
-                    if (data.notification) {
-                      setNotifications((prev) => [...prev, data.notification]);
-                    }
-                  })
-                  .catch((err) =>
-                    console.error("Error notifying missed day:", err)
-                  );
-              }
-            }
-          });
-        } catch (err) {
-          setMessage(`Fehler beim Laden der Daten: ${err.message}`);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-      loadData();
-    }
-  }, [isLoggedIn, username]);
 
   const createChallenge = () => {
     fetch("/create-challenge", {
@@ -229,7 +172,6 @@ const App = () => {
           setNewChallengeStartDate("");
           setNewChallengeIsPublic(false);
           setMessage("Challenge erfolgreich erstellt!");
-          // Aktualisiere Notifications nach Erstellung
           fetchNotifications();
         }
       })
@@ -246,12 +188,10 @@ const App = () => {
       body: JSON.stringify({ username, challengeId }),
     })
       .then((res) => {
-        console.log("Confirm response status:", res.status);
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         return res.json();
       })
       .then((data) => {
-        console.log("Confirm response data:", data);
         if (data.error) {
           setMessage(data.error);
         } else {
@@ -271,7 +211,6 @@ const App = () => {
             data.message + ` (+${data.points - points} Punkte)` ||
               "Challenge updated!"
           );
-          // Aktualisiere Notifications nach Bestätigung
           fetchNotifications();
         }
       })
@@ -296,7 +235,7 @@ const App = () => {
         setMessage(data.message || "Unbekannter Fehler");
         setNewFriendUsername("");
         fetchFriends();
-        fetchNotifications(); // Aktualisiere nach Freundschaftsanfrage
+        fetchNotifications();
       })
       .catch((err) => {
         console.error("Error sending friend request:", err.message);
@@ -314,7 +253,7 @@ const App = () => {
       .then((data) => {
         setMessage(data.message || data.error);
         fetchFriends();
-        fetchNotifications(); // Aktualisiere nach Annahme
+        fetchNotifications();
       })
       .catch((err) => {
         console.error("Error accepting friend request:", err.message);
@@ -371,7 +310,6 @@ const App = () => {
             💪 Du rockst das!
           </h2>
 
-          {/* Punkte-Karte */}
           <div className="bg-white rounded-3xl p-6 shadow-lg hover:shadow-2xl hover:bg-green-50 transition-all duration-300 mb-6">
             <h3 className="text-xl font-semibold text-green-700 mb-4">
               Deine Punkte 🏆
@@ -391,17 +329,19 @@ const App = () => {
           )}
           <div className="flex justify-end mb-6 space-x-2">
             <button
-              onClick={() =>
-                document
-                  .getElementById("notifications-modal")
-                  .classList.toggle("hidden")
-              }
+              onClick={() => setIsNotificationsVisible(true)}
               className="relative bg-gray-200 text-gray-700 px-3 py-2 rounded-full hover:bg-gray-300 transition-all duration-200"
             >
               🔔
-              {notifications.length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                  {notifications.length}
+              {notifications.filter(
+                (n) => !n.seen && (!n.status || n.status === "pending")
+              ).length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center notification-badge">
+                  {
+                    notifications.filter(
+                      (n) => !n.seen && (!n.status || n.status === "pending")
+                    ).length
+                  }
                 </span>
               )}
             </button>
@@ -427,6 +367,9 @@ const App = () => {
             setMessage={setMessage}
             fetchChallenges={fetchChallenges}
             fetchNotifications={fetchNotifications}
+            setNotifications={setNotifications}
+            isVisible={isNotificationsVisible}
+            onClose={() => setIsNotificationsVisible(false)}
           />
 
           <div className="flex justify-start mb-4 space-x-2">
